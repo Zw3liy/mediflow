@@ -7,4 +7,5 @@ urlpatterns = [
     path("api/", include("patients.urls")),
     path("api/", include("scheduling.urls")),
     path("api-auth/", include("rest_framework.urls")),
+    path("api/payments/", include("payments.urls",)),
 ]
