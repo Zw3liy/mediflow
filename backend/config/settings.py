@@ -44,6 +44,7 @@ INSTALLED_APPS = [
     "scheduling",
     "clinical",
     "documents",
+    "payments",
     "auditlog",
 ]
 
