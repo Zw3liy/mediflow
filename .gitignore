@@ -13,3 +13,5 @@ backups/
 *.pem
 *.key
 *.p12
+
+backend/db.sqlite3
