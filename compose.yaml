@@ -1,0 +1,42 @@
+siservices:
+  db:
+    image: postgres:16-alpine
+    env_file:
+      - .env
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  redis:
+    image: redis:7-alpine
+    command:
+      - redis-server
+      - --appendonly
+      - "yes"
+    volumes:
+      - redis_data:/data
+
+  minio:
+    image: minio/minio:latest
+    command:
+      - server
+      - /data
+      - --console-address
+      - ":9001"
+    env_file:
+      - .env
+    volumes:
+      - minio_data:/data
+    ports:
+      - "127.0.0.1:9001:9001"
+
+volumes:
+  postgres_data:
+  redis_data:
+  minio_data:
