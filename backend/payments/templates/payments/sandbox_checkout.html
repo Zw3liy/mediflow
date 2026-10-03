@@ -1,0 +1,295 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta
+        name="viewport"
+        content="width=device-width, initial-scale=1"
+    >
+    <title>MediFlow | Sandbox Deposit</title>
+
+    <style>
+        :root {
+            color-scheme: light;
+            --primary: #0f766e;
+            --primary-dark: #115e59;
+            --danger: #b42318;
+            --background: #f0fdfa;
+            --surface: #ffffff;
+            --border: #d0d5dd;
+            --text: #101828;
+            --muted: #667085;
+        }
+
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            margin: 0;
+            min-height: 100vh;
+            display: grid;
+            place-items: center;
+            padding: 24px;
+            background:
+                linear-gradient(135deg, #ecfdf5 0%, #eff6ff 100%);
+            color: var(--text);
+            font-family:
+                Inter, Arial, Helvetica, sans-serif;
+        }
+
+        .checkout {
+            width: min(100%, 560px);
+            overflow: hidden;
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 20px;
+            box-shadow: 0 20px 55px rgba(16, 24, 40, 0.12);
+        }
+
+        .header {
+            padding: 28px;
+            color: #ffffff;
+            background:
+                linear-gradient(
+                    135deg,
+                    var(--primary-dark),
+                    var(--primary)
+                );
+        }
+
+        .brand {
+            margin: 0 0 8px;
+            font-size: 28px;
+            font-weight: 800;
+            letter-spacing: -0.5px;
+        }
+
+        .header p {
+            margin: 0;
+            opacity: 0.9;
+        }
+
+        .sandbox-badge {
+            display: inline-block;
+            margin-top: 16px;
+            padding: 7px 11px;
+            border: 1px solid rgba(255, 255, 255, 0.45);
+            border-radius: 999px;
+            background: rgba(255, 255, 255, 0.14);
+            font-size: 13px;
+            font-weight: 700;
+        }
+
+        .content {
+            padding: 28px;
+        }
+
+        .notice {
+            margin-bottom: 24px;
+            padding: 14px 16px;
+            border-left: 4px solid #f79009;
+            border-radius: 8px;
+            background: #fffaeb;
+            color: #7a2e0e;
+            line-height: 1.5;
+        }
+
+        .details {
+            margin: 0;
+            border: 1px solid var(--border);
+            border-radius: 12px;
+        }
+
+        .detail-row {
+            display: flex;
+            justify-content: space-between;
+            gap: 20px;
+            padding: 14px 16px;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .detail-row:last-child {
+            border-bottom: 0;
+        }
+
+        .detail-row dt {
+            color: var(--muted);
+        }
+
+        .detail-row dd {
+            margin: 0;
+            text-align: right;
+            font-weight: 700;
+        }
+
+        .amount {
+            margin: 24px 0;
+            padding: 20px;
+            border-radius: 12px;
+            background: var(--background);
+            text-align: center;
+        }
+
+        .amount span {
+            display: block;
+            margin-bottom: 6px;
+            color: var(--muted);
+        }
+
+        .amount strong {
+            color: var(--primary-dark);
+            font-size: 34px;
+        }
+
+        .actions {
+            display: grid;
+            gap: 12px;
+        }
+
+        button {
+            width: 100%;
+            min-height: 50px;
+            padding: 12px 18px;
+            border-radius: 10px;
+            font-size: 16px;
+            font-weight: 700;
+            cursor: pointer;
+        }
+
+        .pay-button {
+            border: 0;
+            background: var(--primary);
+            color: #ffffff;
+        }
+
+        .pay-button:hover {
+            background: var(--primary-dark);
+        }
+
+        .cancel-button {
+            border: 1px solid var(--border);
+            background: #ffffff;
+            color: var(--danger);
+        }
+
+        button:focus-visible {
+            outline: 3px solid #84caff;
+            outline-offset: 2px;
+        }
+
+        .security-note {
+            margin: 20px 0 0;
+            color: var(--muted);
+            font-size: 13px;
+            line-height: 1.55;
+            text-align: center;
+        }
+
+        @media (max-width: 520px) {
+            body {
+                padding: 12px;
+            }
+
+            .header,
+            .content {
+                padding: 22px;
+            }
+
+            .detail-row {
+                display: block;
+            }
+
+            .detail-row dd {
+                margin-top: 5px;
+                text-align: left;
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <main class="checkout">
+        <header class="header">
+            <h1 class="brand">MediFlow</h1>
+            <p>Appointment deposit checkout</p>
+            <span class="sandbox-badge">
+                Development sandbox
+            </span>
+        </header>
+
+        <section class="content">
+            <div class="notice" role="alert">
+                This is a simulated payment page. No real money will
+                be charged and no card information is collected.
+            </div>
+{% if result_message %}
+    <div class="notice" role="status">
+        {{ result_message }}
+    </div>
+{% endif %}
+            <dl class="details">
+                <div class="detail-row">
+                    <dt>Payment reference</dt>
+                    <dd>{{ payment.provider_reference }}</dd>
+                </div>
+
+                <div class="detail-row">
+                    <dt>Service</dt>
+                    <dd>{{ payment.appointment.service.name }}</dd>
+                </div>
+
+                <div class="detail-row">
+                    <dt>Appointment</dt>
+                    <dd>
+                        {{ payment.appointment.starts_at|date:"d M Y, H:i" }}
+                    </dd>
+                </div>
+
+                <div class="detail-row">
+                    <dt>Payment status</dt>
+                    <dd>{{ payment.get_status_display }}</dd>
+                </div>
+            </dl>
+
+            <div class="amount">
+                <span>Deposit due</span>
+                <strong>R{{ deposit_amount }}</strong>
+            </div>
+{% if payment.status == "created" or payment.status == "pending"%}
+            <form method="post" class="actions">
+                {% csrf_token %}
+
+                <button
+                    class="pay-button"
+                    type="submit"
+                    name="action"
+                    value="pay"
+                >
+                    Pay deposit
+                </button>
+
+                <button
+                    class="cancel-button"
+                    type="submit"
+                    name="action"
+                    value="cancel"
+                >
+                    Cancel payment
+                </button>
+            </form>
+{% else %}
+<div class="notice role=status">
+    This checkout is no longer active. Please return to the MediFlow app to make a new payment:
+    <strong>{{ payment.appointment.get_absolute_url }}</strong>
+</div>
+{% endif %}
+            <p class="security-note">
+                MediFlow stores only the payment status, amount,
+                currency and provider reference. It does not store
+                card numbers, CVVs, PINs or OTPs.
+            </p>
+        </section>
+    </main>
+</body>
+</html>
