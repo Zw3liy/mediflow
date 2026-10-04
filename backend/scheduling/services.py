@@ -1,32 +1,84 @@
 from datetime import timedelta
+
 from django.core.exceptions import ValidationError
 from django.db import transaction
 from django.utils import timezone
+
+from tenancy.models import Membership
+
 from .models import Appointment
+ACTIVE_BOOKING_STATUSES = [
+    Appointment.Status.HELD,
+    Appointment.Status.CONFIRMED,
+    Appointment.Status.ARRIVED,
+]
+
+
 @transaction.atomic
-def book(*, practice, patient, practitioner, service, starts_at):
-if patient.practice_id != practice.id:
-raise ValidationError("Cross-practice␣booking␣denied.")
-if service.practice_id != practice.id:
-raise ValidationError("Cross-practice␣booking␣denied.")
-if starts_at <= timezone.now():
-raise ValidationError("Choose␣a␣future␣time.")
-ends_at = starts_at + timedelta(
-minutes=service.duration_minutes)
-clash = (
-Appointment.objects.select_for_update()
-.filter(
-practice=practice,
-practitioner=practitioner,
-status__in=["held", "confirmed", "arrived"],
-starts_at__lt=ends_at,
-ends_at__gt=starts_at)
-.exists()
-)
-if clash:
-raise ValidationError("That␣time␣is␣no␣longer␣available.")
-return Appointment.objects.create(
-practice=practice, patient=patient,
-practitioner=practitioner, service=service,
-starts_at=starts_at, ends_at=ends_at,
-hold_expires_at=timezone.now() + timedelta(minutes=10))
+def book(
+    *,
+    practice,
+    patient,
+    practitioner,
+    service,
+    starts_at,
+):
+    if patient.practice_id != practice.id:
+        raise ValidationError(
+            "The patient does not belong to this practice."
+        )
+
+    if service.practice_id != practice.id:
+        raise ValidationError(
+            "The service does not belong to this practice."
+        )
+
+    practitioner_is_active = Membership.objects.filter(
+        practice=practice,
+        user=practitioner,
+        active=True,
+        role__in=[
+            Membership.Role.DOCTOR,
+            Membership.Role.NURSE,
+        ],
+    ).exists()
+
+    if not practitioner_is_active:
+        raise ValidationError(
+            "The practitioner is not active in this practice."
+        )
+
+    if starts_at <= timezone.now():
+        raise ValidationError("Choose a future appointment time.")
+
+    ends_at = starts_at + timedelta(
+        minutes=service.duration_minutes,
+    )
+
+    clash_exists = (
+        Appointment.objects.select_for_update()
+        .filter(
+            practice=practice,
+            practitioner=practitioner,
+            status__in=ACTIVE_BOOKING_STATUSES,
+            starts_at__lt=ends_at,
+            ends_at__gt=starts_at,
+        )
+        .exists()
+    )
+
+    if clash_exists:
+        raise ValidationError(
+            "That appointment time is no longer available."
+        )
+
+    return Appointment.objects.create(
+        practice=practice,
+        patient=patient,
+        practitioner=practitioner,
+        service=service,
+        starts_at=starts_at,
+        ends_at=ends_at,
+        status=Appointment.Status.HELD,
+        hold_expires_at=timezone.now() + timedelta(minutes=10),
+    )
