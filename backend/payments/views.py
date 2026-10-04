@@ -1,35 +1,32 @@
 from decimal import Decimal
 
 from django.conf import settings
+from django.core.exceptions import (
+    ValidationError as DjangoValidationError,
+)
 from django.db import transaction
 from django.http import Http404
 from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
 from django.views import View
-
-from django.core.exceptions import(
-    ValidationError as DjangoValidationError,
-)
 from rest_framework.exceptions import (
     ValidationError as ApiValidationError,
 )
-
 from rest_framework.permissions import IsAuthenticated
-from rest_framework.views import APIView
 from rest_framework.response import Response
+from rest_framework.views import APIView
 
+from scheduling.models import Appointment
 from tenancy.context import require_membership
 
+from .models import DepositPayment, PaymentWebhookEvent
 from .sandbox import SandboxGateway
 from .serializers import (
     CreateDepositCheckoutSerializer,
     DepositPaymentSerializer,
 )
-from . services import create_deposit_checkout
+from .services import create_deposit_checkout
 
-from scheduling.models import Appointment
-
-from .models import DepositPayment, PaymentWebhookEvent
 
 STAFF_ROLES = [
     "owner",
@@ -38,10 +35,11 @@ STAFF_ROLES = [
     "reception",
 ]
 
+
 class CreateDepositCheckoutView(APIView):
     permission_classes = [IsAuthenticated]
 
-    def post(self, request,):
+    def post(self, request):
         input_serializer = CreateDepositCheckoutSerializer(
             data=request.data,
         )
@@ -52,21 +50,48 @@ class CreateDepositCheckoutView(APIView):
             practice_id=request.headers.get("X-Practice-ID"),
             roles=STAFF_ROLES,
         )
+
         try:
             payment = create_deposit_checkout(
-                appointment_id=input_serializer.validated_data["appointment_id"],
+                appointment_id=(
+                    input_serializer.validated_data["appointment_id"]
+                ),
                 practice=membership.practice,
                 gateway=SandboxGateway(),
             )
-            
         except DjangoValidationError as error:
             raise ApiValidationError(
-                {"detail":error.message},
-                )from error
+                {"detail": error.messages},
+            ) from error
 
         output_serializer = DepositPaymentSerializer(payment)
 
         return Response(output_serializer.data)
+
+
+class DepositPaymentStatusView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, payment_id):
+        membership = require_membership(
+            user=request.user,
+            practice_id=request.headers.get("X-Practice-ID"),
+            roles=STAFF_ROLES,
+        )
+
+        payment = get_object_or_404(
+            DepositPayment.objects.select_related(
+                "appointment",
+                "appointment__service",
+            ),
+            id=payment_id,
+            practice=membership.practice,
+        )
+
+        output_serializer = DepositPaymentSerializer(payment)
+
+        return Response(output_serializer.data)
+
 
 class SandboxCheckoutView(View):
     template_name = "payments/sandbox_checkout.html"
