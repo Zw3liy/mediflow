@@ -61,7 +61,7 @@ class AppointmentViewSet(
     def get_queryset(self):
         membership = self.get_membership()
 
-        return Appointment.objects.filter(
+        queryset = Appointment.objects.filter(
             practice=membership.practice,
         ).select_related(
             "practice",
@@ -69,6 +69,34 @@ class AppointmentViewSet(
             "practitioner",
             "service",
         )
+
+        if membership.role in PRACTITIONER_ROLES:
+            queryset = queryset.filter(
+                practitioner=self.request.user,
+            )
+
+        requested_status = self.request.query_params.get(
+            "status"
+        )
+
+        if requested_status:
+            valid_statuses = {
+                value
+                for value, _label in Appointment.Status.choices
+            }
+
+            if requested_status not in valid_statuses:
+                raise ValidationError(
+                    {
+                        "status": "Invalid appointment status.",
+                    }
+                )
+
+            queryset = queryset.filter(
+                status=requested_status,
+            )
+
+        return queryset
 
     def validate_related_objects(self, serializer, membership):
         instance = serializer.instance
