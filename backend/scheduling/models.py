@@ -51,3 +51,18 @@ class Appointment(models.Model):
         null=True,
         blank=True,
     )
+    reviewed_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="reviewed_appointments",
+    )
+    reviewed_at = models.DateTimeField(
+        null=True,
+        blank=True,
+    )
+    decision_reason = models.TextField(
+        blank=True,
+        default="",
+    )

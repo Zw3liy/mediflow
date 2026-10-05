@@ -52,7 +52,9 @@ def book(
         )
 
     if starts_at <= timezone.now():
-        raise ValidationError("Choose a future appointment time.")
+        raise ValidationError(
+            "Choose a future appointment time."
+        )
 
     ends_at = starts_at + timedelta(
         minutes=service.duration_minutes,
@@ -85,3 +87,63 @@ def book(
         status=Appointment.Status.REQUESTED,
         hold_expires_at=None,
     )
+
+
+@transaction.atomic
+def approve_booking(
+    *,
+    appointment_id,
+    practice,
+    actor,
+):
+    actor_is_authorized = Membership.objects.filter(
+        practice=practice,
+        user=actor,
+        active=True,
+        role__in=[
+            Membership.Role.RECEPTION,
+            Membership.Role.OWNER,
+        ],
+    ).exists()
+
+    if not actor_is_authorized:
+        raise ValidationError(
+            "Only active reception or owner staff may approve bookings."
+        )
+
+    try:
+        appointment = Appointment.objects.select_for_update().get(
+            id=appointment_id,
+            practice=practice,
+        )
+    except Appointment.DoesNotExist as error:
+        raise ValidationError(
+            "Appointment was not found in this practice."
+        ) from error
+
+    if appointment.status != Appointment.Status.REQUESTED:
+        raise ValidationError(
+            "Only requested appointments may be approved."
+        )
+
+    reviewed_at = timezone.now()
+
+    appointment.status = Appointment.Status.HELD
+    appointment.hold_expires_at = (
+        reviewed_at + timedelta(minutes=10)
+    )
+    appointment.reviewed_by = actor
+    appointment.reviewed_at = reviewed_at
+    appointment.decision_reason = ""
+
+    appointment.save(
+        update_fields=[
+            "status",
+            "hold_expires_at",
+            "reviewed_by",
+            "reviewed_at",
+            "decision_reason",
+        ]
+    )
+
+    return appointment

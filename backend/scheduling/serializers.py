@@ -35,6 +35,9 @@ class AppointmentSerializer(serializers.ModelSerializer):
             "ends_at",
             "status",
             "hold_expires_at",
+            "reviewed_by",
+            "reviewed_at",
+            "decision_reason",
         ]
         read_only_fields = [
             "id",
@@ -42,6 +45,9 @@ class AppointmentSerializer(serializers.ModelSerializer):
             "ends_at",
             "status",
             "hold_expires_at",
+            "reviewed_by",
+            "reviewed_at",
+            "decision_reason",
         ]
 
     def validate(self, attributes):

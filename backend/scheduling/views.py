@@ -1,10 +1,12 @@
-from rest_framework import viewsets
+from rest_framework import status, viewsets
 from rest_framework.exceptions import ValidationError
 from rest_framework.permissions import IsAuthenticated
+from rest_framework.response import Response
+from rest_framework.decorators import action
 
 from tenancy.context import require_membership
 from tenancy.models import Membership
-from .services import book
+from .services import approve_booking, book
 from .models import Appointment, Service
 from .serializers import AppointmentSerializer, ServiceSerializer
 from django.core.exceptions import (
@@ -137,3 +139,28 @@ class AppointmentViewSet(
         membership = self.get_membership()
         self.validate_related_objects(serializer, membership)
         serializer.save(practice=membership.practice)
+
+    @action(
+        detail=True,
+        methods=["post"],
+    )
+    def approve(self, request, pk=None):
+        membership = self.get_membership()
+
+        try:
+            appointment = approve_booking(
+                appointment_id=pk,
+                practice=membership.practice,
+                actor=request.user,
+            )
+        except DjangoValidationError as error:
+            raise ValidationError(
+                {"detail": error.messages},
+            ) from error
+
+        serializer = self.get_serializer(appointment)
+
+        return Response(
+            serializer.data,
+            status=status.HTTP_200_OK,
+        )
