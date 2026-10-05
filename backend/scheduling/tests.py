@@ -88,6 +88,27 @@ class SchedulingApiTests(APITestCase):
         self.service_url = reverse("service-list")
         self.client.force_authenticate(user=self.doctor_a)
 
+    def test_api_rejects_overlapping_appointment(self):
+        response = self.client.post(
+            self.appointment_url,
+            {
+                "patient": str(self.patient_a.id),
+                "practitioner": self.doctor_a.id,
+                "service": self.service_a.id,
+                "starts_at": (
+                    self.starts_at + timedelta(minutes=10)
+                ).isoformat(),
+            },
+            format="json",
+            **self.practice_headers(),
+        )
+
+        self.assertEqual(
+            response.status_code,
+            status.HTTP_400_BAD_REQUEST,
+        )
+        self.assertIn("detail", response.data)
+
     def practice_headers(self):
         return {
             "HTTP_X_PRACTICE_ID": str(self.practice_a.id),
@@ -140,15 +161,18 @@ class SchedulingApiTests(APITestCase):
         )
         self.assertIn("patient", response.data)
 
-    def test_end_before_start_is_rejected(self):
+    def test_client_supplied_end_is_ignored(self):
+        requested_start = self.ends_at
+        malicious_end = self.starts_at
+
         response = self.client.post(
             self.appointment_url,
             {
                 "patient": str(self.patient_a.id),
                 "practitioner": self.doctor_a.id,
                 "service": self.service_a.id,
-                "starts_at": self.ends_at.isoformat(),
-                "ends_at": self.starts_at.isoformat(),
+                "starts_at": requested_start.isoformat(),
+                "ends_at": malicious_end.isoformat(),
                 "status": Appointment.Status.CONFIRMED,
             },
             format="json",
@@ -157,9 +181,21 @@ class SchedulingApiTests(APITestCase):
 
         self.assertEqual(
             response.status_code,
-            status.HTTP_400_BAD_REQUEST,
+            status.HTTP_201_CREATED,
         )
-        self.assertIn("ends_at", response.data)
+
+        appointment = Appointment.objects.get(
+            id=response.data["id"],
+        )
+
+        self.assertEqual(
+            appointment.ends_at,
+            requested_start + timedelta(minutes=30),
+        )
+        self.assertEqual(
+            appointment.status,
+            Appointment.Status.HELD,
+        )
 
     def test_valid_appointment_uses_selected_practice(self):
         new_start = self.starts_at + timedelta(hours=1)
@@ -190,4 +226,39 @@ class SchedulingApiTests(APITestCase):
         self.assertEqual(
             appointment.practice,
             self.practice_a,
+        )
+    def test_api_cannot_force_confirmed_status(self):
+        new_start = self.starts_at + timedelta(hours=2)
+        supplied_end = new_start + timedelta(hours=3)
+
+        response = self.client.post(
+            self.appointment_url,
+            {
+                "patient": str(self.patient_a.id),
+                "practitioner": self.doctor_a.id,
+                "service": self.service_a.id,
+                "starts_at": new_start.isoformat(),
+                "ends_at": supplied_end.isoformat(),
+                "status": Appointment.Status.CONFIRMED,
+            },
+            format="json",
+            **self.practice_headers(),
+        )
+
+        self.assertEqual(
+            response.status_code,
+            status.HTTP_201_CREATED,
+        )
+
+        appointment = Appointment.objects.get(
+            id=response.data["id"],
+        )
+
+        self.assertEqual(
+            appointment.status,
+            Appointment.Status.HELD,
+        )
+        self.assertEqual(
+            appointment.ends_at,
+            new_start + timedelta(minutes=30),
         )

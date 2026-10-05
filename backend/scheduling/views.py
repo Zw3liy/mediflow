@@ -4,10 +4,12 @@ from rest_framework.permissions import IsAuthenticated
 
 from tenancy.context import require_membership
 from tenancy.models import Membership
-
+from .services import book
 from .models import Appointment, Service
 from .serializers import AppointmentSerializer, ServiceSerializer
-
+from django.core.exceptions import (
+    ValidationError as DjangoValidationError,
+)
 
 STAFF_ROLES = [
     "owner",
@@ -113,8 +115,24 @@ class AppointmentViewSet(
     def perform_create(self, serializer):
         membership = self.get_membership()
         self.validate_related_objects(serializer, membership)
-        serializer.save(practice=membership.practice)
 
+        values = serializer.validated_data
+
+        try:
+            appointment = book(
+                practice=membership.practice,
+                patient=values["patient"],
+                practitioner=values["practitioner"],
+                service=values["service"],
+                starts_at=values["starts_at"],
+            )
+        except DjangoValidationError as error:
+            raise ValidationError(
+                {"detail": error.messages},
+            ) from error
+
+        serializer.instance = appointment
+        
     def perform_update(self, serializer):
         membership = self.get_membership()
         self.validate_related_objects(serializer, membership)

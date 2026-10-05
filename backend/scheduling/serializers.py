@@ -1,6 +1,8 @@
 from rest_framework import serializers
+from .services import book
 
 from .models import Appointment, Service
+
 
 
 class ServiceSerializer(serializers.ModelSerializer):
@@ -37,6 +39,9 @@ class AppointmentSerializer(serializers.ModelSerializer):
         read_only_fields = [
             "id",
             "practice",
+            "ends_at",
+            "status",
+            "hold_expires_at",
         ]
 
     def validate(self, attributes):
