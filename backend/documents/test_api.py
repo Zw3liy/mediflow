@@ -89,7 +89,7 @@ class PrescriptionDocumentApiTests(APITestCase):
             "HTTP_X_PRACTICE_ID": str(self.practice.id),
         }
 
-    def test_receptionist_can_register_prescription_document(self):
+    def test_metadata_only_registration_endpoint_is_disabled(self):
         response = self.client.post(
             reverse("prescription-document-list"),
             {
@@ -106,30 +106,11 @@ class PrescriptionDocumentApiTests(APITestCase):
 
         self.assertEqual(
             response.status_code,
-            status.HTTP_201_CREATED,
+            status.HTTP_405_METHOD_NOT_ALLOWED,
         )
         self.assertEqual(
-            response.data["scan_status"],
-            PrescriptionDocument.ScanStatus.PENDING,
-        )
-        self.assertEqual(
-            response.data["uploaded_by"],
-            self.receptionist.id,
-        )
-        self.assertEqual(
-            response.data["object_key"],
-            self.object_key,
-        )
-
-        document = PrescriptionDocument.objects.get()
-
-        self.assertEqual(
-            document.prescription,
-            self.prescription,
-        )
-        self.assertEqual(
-            document.uploaded_by,
-            self.receptionist,
+            PrescriptionDocument.objects.count(),
+            0,
         )
 
     def test_receptionist_can_release_clean_document(self):
@@ -222,7 +203,7 @@ class PrescriptionDocumentApiTests(APITestCase):
         self.assertNotIn("sha256", response.data[0])
         self.assertNotIn("uploaded_by", response.data[0])
 
-    def test_patient_cannot_register_document(self):
+    def test_patient_cannot_use_metadata_registration_endpoint(self):
         self.client.force_authenticate(
             user=self.patient_user,
         )
@@ -243,7 +224,7 @@ class PrescriptionDocumentApiTests(APITestCase):
 
         self.assertEqual(
             response.status_code,
-            status.HTTP_403_FORBIDDEN,
+            status.HTTP_405_METHOD_NOT_ALLOWED,
         )
         self.assertEqual(
             PrescriptionDocument.objects.count(),

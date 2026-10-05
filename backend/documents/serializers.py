@@ -47,3 +47,12 @@ class PatientPrescriptionDocumentSerializer(
             "created_at",
         ]
         read_only_fields = fields
+
+
+class PrescriptionDocumentUploadSerializer(serializers.Serializer):
+    prescription = serializers.PrimaryKeyRelatedField(
+        queryset=PrescriptionDocument._meta.get_field(
+            "prescription"
+        ).remote_field.model.objects.all(),
+    )
+    file = serializers.FileField()
