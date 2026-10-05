@@ -1,3 +1,4 @@
+import os
 """
 Django settings for config project.
 
@@ -130,3 +131,11 @@ STATIC_URL = "static/"
 # https://docs.djangoproject.com/en/5.2/ref/settings/#default-auto-field
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
+
+DOCUMENT_STORAGE_ROOT = BASE_DIR / "private_documents"
+DOCUMENT_DOWNLOAD_TOKEN_MAX_AGE = int(
+    os.environ.get("DOCUMENT_DOWNLOAD_TOKEN_MAX_AGE", "300")
+)
+CLAMAV_HOST = os.environ.get("CLAMAV_HOST", "127.0.0.1")
+CLAMAV_PORT = int(os.environ.get("CLAMAV_PORT", "3310"))
+CLAMAV_TIMEOUT = int(os.environ.get("CLAMAV_TIMEOUT", "30"))
