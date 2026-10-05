@@ -3,8 +3,15 @@ import hashlib
 from django.core.exceptions import ValidationError
 from django.db import transaction
 from django.utils import timezone
+from tenancy.models import Membership
 
-from .models import ClinicalNote, ClinicalNoteVersion
+from .models import (
+    ClinicalNote,
+    ClinicalNoteVersion,
+    Encounter,
+    Prescription,
+    PrescriptionItem,
+)
 
 
 @transaction.atomic
@@ -48,3 +55,108 @@ def sign_note(
     )
 
     return item
+
+
+@transaction.atomic
+def create_prescription(
+    *,
+    encounter_id,
+    actor,
+    items,
+    general_instructions="",
+):
+    try:
+        encounter = (
+            Encounter.objects.select_for_update()
+            .select_related(
+                "practice",
+                "practitioner",
+            )
+            .get(pk=encounter_id)
+        )
+    except Encounter.DoesNotExist as error:
+        raise ValidationError(
+            "Encounter was not found."
+        ) from error
+
+    actor_is_active_doctor = Membership.objects.filter(
+        practice=encounter.practice,
+        user=actor,
+        role=Membership.Role.DOCTOR,
+        active=True,
+    ).exists()
+
+    if not actor_is_active_doctor:
+        raise ValidationError(
+            "Only an active doctor may create prescriptions."
+        )
+
+    if encounter.practitioner_id != actor.id:
+        raise ValidationError(
+            "Only the responsible doctor may prescribe."
+        )
+
+    prescription_items = list(items)
+
+    if not prescription_items:
+        raise ValidationError(
+            "At least one prescription item is required."
+        )
+
+    normalized_items = []
+
+    for item in prescription_items:
+        if not isinstance(item, dict):
+            raise ValidationError(
+                "Each prescription item must be an object."
+            )
+
+        medication_name = (
+            item.get("medication_name") or ""
+        ).strip()
+        dosage = (
+            item.get("dosage") or ""
+        ).strip()
+        frequency = (
+            item.get("frequency") or ""
+        ).strip()
+
+        if not medication_name or not dosage or not frequency:
+            raise ValidationError(
+                "Medication name, dosage, and frequency are required."
+            )
+
+        normalized_items.append(
+            {
+                "medication_name": medication_name,
+                "dosage": dosage,
+                "route": (item.get("route") or "").strip(),
+                "frequency": frequency,
+                "duration": (item.get("duration") or "").strip(),
+                "quantity": (item.get("quantity") or "").strip(),
+                "instructions": (
+                    item.get("instructions") or ""
+                ).strip(),
+            }
+        )
+
+    prescription = Prescription.objects.create(
+        encounter=encounter,
+        prescribed_by=actor,
+        status=Prescription.Status.DRAFT,
+        general_instructions=(
+            general_instructions or ""
+        ).strip(),
+    )
+
+    PrescriptionItem.objects.bulk_create(
+        [
+            PrescriptionItem(
+                prescription=prescription,
+                **item,
+            )
+            for item in normalized_items
+        ]
+    )
+
+    return prescription
