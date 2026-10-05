@@ -14,6 +14,7 @@ from .serializers import NotificationSerializer
 NOTIFICATION_ROLES = [
     Membership.Role.DOCTOR,
     Membership.Role.NURSE,
+    Membership.Role.PATIENT,
 ]
 
 

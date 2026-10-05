@@ -15,6 +15,10 @@ class Notification(models.Model):
             "appointment_rejected",
             "Appointment rejected",
         )
+        APPOINTMENT_REMINDER = (
+            "appointment_reminder",
+            "Appointment reminder",
+        )
 
     practice = models.ForeignKey(
         Practice,

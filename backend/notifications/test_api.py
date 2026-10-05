@@ -366,3 +366,58 @@ class NotificationApiTests(APITestCase):
         self.assertIsNone(
             other_notification.read_at,
         )
+
+    def test_patient_can_list_only_own_reminder_notifications(self):
+        patient_user = User.objects.create_user(
+            username="notification-api-patient",
+            password="safe-test-password",
+        )
+
+        Membership.objects.create(
+            practice=self.practice,
+            user=patient_user,
+            role=Membership.Role.PATIENT,
+            active=True,
+        )
+
+        self.patient.portal_user = patient_user
+        self.patient.save(
+            update_fields=[
+                "portal_user",
+            ]
+        )
+
+        reminder = Notification.objects.create(
+            practice=self.practice,
+            recipient=patient_user,
+            appointment=self.appointment,
+            kind=Notification.Kind.APPOINTMENT_REMINDER,
+            title="Appointment reminder",
+            message="Your appointment starts soon.",
+        )
+
+        self.client.force_authenticate(
+            user=patient_user,
+        )
+
+        response = self.client.get(
+            reverse("notification-list"),
+            **self.practice_headers(),
+        )
+
+        self.assertEqual(
+            response.status_code,
+            status.HTTP_200_OK,
+        )
+        self.assertEqual(
+            len(response.data),
+            1,
+        )
+        self.assertEqual(
+            response.data[0]["id"],
+            reminder.id,
+        )
+        self.assertEqual(
+            response.data[0]["kind"],
+            Notification.Kind.APPOINTMENT_REMINDER,
+        )
