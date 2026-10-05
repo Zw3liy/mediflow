@@ -4,6 +4,7 @@ from django.core.exceptions import ValidationError
 from django.db import transaction
 from django.utils import timezone
 from tenancy.models import Membership
+from auditlog.services import record_audit_event
 
 from .models import (
     ClinicalNote,
@@ -159,6 +160,20 @@ def create_prescription(
         ]
     )
 
+    record_audit_event(
+        practice=encounter.practice,
+        actor=actor,
+        action="prescription.created",
+        object_type="prescription",
+        object_id=prescription.id,
+        purpose="Create prescription",
+        outcome="success",
+        metadata={
+            "status": prescription.status,
+            "item_count": len(normalized_items),
+        },
+    )
+
     return prescription
 
 
@@ -218,6 +233,19 @@ def issue_prescription(
             "issued_at",
             "updated_at",
         ]
+    )
+
+    record_audit_event(
+        practice=prescription.encounter.practice,
+        actor=actor,
+        action="prescription.issued",
+        object_type="prescription",
+        object_id=prescription.id,
+        purpose="Issue prescription",
+        outcome="success",
+        metadata={
+            "status": prescription.status,
+        },
     )
 
     return prescription

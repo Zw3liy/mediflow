@@ -1,4 +1,5 @@
 from django.db import transaction
+from auditlog.services import record_audit_event
 
 from .models import PrescriptionDocument
 
@@ -55,6 +56,27 @@ def scan_prescription_document(
             "scan_status",
             "released_to_patient_at",
         ]
+    )
+
+    record_audit_event(
+        practice=document.practice,
+        actor=None,
+        action=f"document.scan_{document.scan_status}",
+        object_type="prescription_document",
+        object_id=document.id,
+        purpose="Scan prescription document for malware",
+        outcome=(
+            "success"
+            if document.scan_status
+            in {
+                PrescriptionDocument.ScanStatus.CLEAN,
+                PrescriptionDocument.ScanStatus.INFECTED,
+            }
+            else "failed"
+        ),
+        metadata={
+            "scan_status": document.scan_status,
+        },
     )
 
     return document

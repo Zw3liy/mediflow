@@ -12,6 +12,7 @@ from rest_framework.response import Response
 
 from tenancy.context import require_membership
 from tenancy.models import Membership
+from auditlog.services import record_audit_event
 
 from .models import PrescriptionDocument
 from .serializers import (
@@ -241,6 +242,20 @@ class PrescriptionDocumentViewSet(
             )
         except DocumentStorageError as error:
             raise DocumentStorageUnavailable() from error
+
+        record_audit_event(
+            practice=document.practice,
+            actor=request.user,
+            action="document.downloaded",
+            object_type="prescription_document",
+            object_id=document.id,
+            purpose="Download released prescription document",
+            outcome="success",
+            metadata={
+                "content_type": document.content_type,
+                "size_bytes": document.size_bytes,
+            },
+        )
 
         response = HttpResponse(
             content,

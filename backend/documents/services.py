@@ -7,6 +7,7 @@ from django.utils import timezone
 
 from clinical.models import Prescription
 from tenancy.models import Membership
+from auditlog.services import record_audit_event
 
 from .models import PrescriptionDocument
 
@@ -109,7 +110,7 @@ def register_prescription_document(
             "The storage key does not belong to this prescription."
         )
 
-    return PrescriptionDocument.objects.create(
+    document = PrescriptionDocument.objects.create(
         practice=practice,
         prescription=prescription,
         uploaded_by=actor,
@@ -120,6 +121,22 @@ def register_prescription_document(
         sha256=clean_sha256,
         scan_status=PrescriptionDocument.ScanStatus.PENDING,
     )
+
+    record_audit_event(
+        practice=practice,
+        actor=actor,
+        action="document.uploaded",
+        object_type="prescription_document",
+        object_id=document.id,
+        purpose="Upload prescription document",
+        outcome="success",
+        metadata={
+            "scan_status": document.scan_status,
+            "size_bytes": document.size_bytes,
+        },
+    )
+
+    return document
 
 
 @transaction.atomic
@@ -177,6 +194,19 @@ def release_prescription_document(
             update_fields=[
                 "released_to_patient_at",
             ]
+        )
+
+        record_audit_event(
+            practice=practice,
+            actor=actor,
+            action="document.released",
+            object_type="prescription_document",
+            object_id=document.id,
+            purpose="Release prescription document to patient",
+            outcome="success",
+            metadata={
+                "scan_status": document.scan_status,
+            },
         )
 
     return document

@@ -1,6 +1,7 @@
 import tempfile
 from pathlib import Path
 
+from auditlog.models import AuditEvent
 from django.contrib.auth import get_user_model
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import override_settings
@@ -192,6 +193,23 @@ class PrescriptionDocumentStorageApiTests(APITestCase):
         self.assertEqual(
             download_response["Content-Type"],
             "application/pdf",
+        )
+
+
+        audit_event = AuditEvent.objects.get(
+            action="document.downloaded",
+        )
+        self.assertEqual(
+            audit_event.actor,
+            self.patient_user,
+        )
+        self.assertEqual(
+            audit_event.object_id,
+            str(document.id),
+        )
+        self.assertEqual(
+            audit_event.outcome,
+            "success",
         )
 
     def test_pending_document_has_no_patient_download_token(self):

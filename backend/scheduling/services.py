@@ -5,6 +5,7 @@ from django.db import transaction
 from django.utils import timezone
 
 from tenancy.models import Membership
+from auditlog.services import record_audit_event
 from notifications.services import (
     notify_appointment_approved,
     notify_appointment_rejected,
@@ -150,6 +151,19 @@ def approve_booking(
         ]
     )
 
+    record_audit_event(
+        practice=practice,
+        actor=actor,
+        action="appointment.approved",
+        object_type="appointment",
+        object_id=appointment.id,
+        purpose="Approve requested appointment",
+        outcome="success",
+        metadata={
+            "status": appointment.status,
+        },
+    )
+
     notify_appointment_approved(
         appointment=appointment,
     )
@@ -218,6 +232,19 @@ def reject_booking(
             "reviewed_at",
             "decision_reason",
         ]
+    )
+
+    record_audit_event(
+        practice=practice,
+        actor=actor,
+        action="appointment.rejected",
+        object_type="appointment",
+        object_id=appointment.id,
+        purpose="Reject requested appointment",
+        outcome="success",
+        metadata={
+            "status": appointment.status,
+        },
     )
 
     notify_appointment_rejected(
