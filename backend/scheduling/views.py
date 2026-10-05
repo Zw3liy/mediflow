@@ -6,7 +6,7 @@ from rest_framework.decorators import action
 
 from tenancy.context import require_membership
 from tenancy.models import Membership
-from .services import approve_booking, book
+from .services import approve_booking, book, reject_booking
 from .models import Appointment, Service
 from .serializers import AppointmentSerializer, ServiceSerializer
 from django.core.exceptions import (
@@ -152,6 +152,33 @@ class AppointmentViewSet(
                 appointment_id=pk,
                 practice=membership.practice,
                 actor=request.user,
+            )
+        except DjangoValidationError as error:
+            raise ValidationError(
+                {"detail": error.messages},
+            ) from error
+
+        serializer = self.get_serializer(appointment)
+
+        return Response(
+            serializer.data,
+            status=status.HTTP_200_OK,
+        )
+
+    @action(
+        detail=True,
+        methods=["post"],
+    )
+    def reject(self, request, pk=None):
+        membership = self.get_membership()
+        reason = request.data.get("reason") or ""
+
+        try:
+            appointment = reject_booking(
+                appointment_id=pk,
+                practice=membership.practice,
+                actor=request.user,
+                reason=reason,
             )
         except DjangoValidationError as error:
             raise ValidationError(

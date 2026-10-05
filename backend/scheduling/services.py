@@ -147,3 +147,69 @@ def approve_booking(
     )
 
     return appointment
+
+
+@transaction.atomic
+def reject_booking(
+    *,
+    appointment_id,
+    practice,
+    actor,
+    reason,
+):
+    actor_is_authorized = Membership.objects.filter(
+        practice=practice,
+        user=actor,
+        active=True,
+        role__in=[
+            Membership.Role.RECEPTION,
+            Membership.Role.OWNER,
+        ],
+    ).exists()
+
+    if not actor_is_authorized:
+        raise ValidationError(
+            "Only active reception or owner staff may reject bookings."
+        )
+
+    clean_reason = reason.strip()
+
+    if not clean_reason:
+        raise ValidationError(
+            "A rejection reason is required."
+        )
+
+    try:
+        appointment = Appointment.objects.select_for_update().get(
+            id=appointment_id,
+            practice=practice,
+        )
+    except Appointment.DoesNotExist as error:
+        raise ValidationError(
+            "Appointment was not found in this practice."
+        ) from error
+
+    if appointment.status != Appointment.Status.REQUESTED:
+        raise ValidationError(
+            "Only requested appointments may be rejected."
+        )
+
+    reviewed_at = timezone.now()
+
+    appointment.status = Appointment.Status.REJECTED
+    appointment.hold_expires_at = None
+    appointment.reviewed_by = actor
+    appointment.reviewed_at = reviewed_at
+    appointment.decision_reason = clean_reason
+
+    appointment.save(
+        update_fields=[
+            "status",
+            "hold_expires_at",
+            "reviewed_by",
+            "reviewed_at",
+            "decision_reason",
+        ]
+    )
+
+    return appointment
