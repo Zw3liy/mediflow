@@ -194,7 +194,7 @@ class SchedulingApiTests(APITestCase):
         )
         self.assertEqual(
             appointment.status,
-            Appointment.Status.HELD,
+            Appointment.Status.REQUESTED,
         )
 
     def test_valid_appointment_uses_selected_practice(self):
@@ -256,7 +256,7 @@ class SchedulingApiTests(APITestCase):
 
         self.assertEqual(
             appointment.status,
-            Appointment.Status.HELD,
+            Appointment.Status.REQUESTED,
         )
         self.assertEqual(
             appointment.ends_at,

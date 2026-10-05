@@ -79,12 +79,8 @@ class BookingServiceTests(TestCase):
 
         return book(**values)
 
-    def test_duration_and_hold_are_calculated_by_service(self):
-        before_booking = timezone.now()
-
+    def test_duration_and_requested_state_are_calculated_by_service(self):
         appointment = self.create_booking()
-
-        after_booking = timezone.now()
 
         self.assertEqual(
             appointment.ends_at,
@@ -92,16 +88,10 @@ class BookingServiceTests(TestCase):
         )
         self.assertEqual(
             appointment.status,
-            Appointment.Status.HELD,
+            Appointment.Status.REQUESTED,
         )
-        self.assertGreaterEqual(
-            appointment.hold_expires_at,
-            before_booking + timedelta(minutes=10),
-        )
-        self.assertLessEqual(
-            appointment.hold_expires_at,
-            after_booking + timedelta(minutes=10),
-        )
+        self.assertIsNone(appointment.hold_expires_at)
+
 
     def test_cross_practice_patient_is_rejected(self):
         with self.assertRaisesMessage(

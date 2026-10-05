@@ -7,7 +7,10 @@ from django.utils import timezone
 from tenancy.models import Membership
 
 from .models import Appointment
+
+
 ACTIVE_BOOKING_STATUSES = [
+    Appointment.Status.REQUESTED,
     Appointment.Status.HELD,
     Appointment.Status.CONFIRMED,
     Appointment.Status.ARRIVED,
@@ -79,6 +82,6 @@ def book(
         service=service,
         starts_at=starts_at,
         ends_at=ends_at,
-        status=Appointment.Status.HELD,
-        hold_expires_at=timezone.now() + timedelta(minutes=10),
+        status=Appointment.Status.REQUESTED,
+        hold_expires_at=None,
     )

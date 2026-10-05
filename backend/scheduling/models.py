@@ -15,10 +15,12 @@ class Service(models.Model):
 
 class Appointment(models.Model):
     class Status(models.TextChoices):
+        REQUESTED = "requested", "Requested"
         HELD = "held", "Held"
         CONFIRMED = "confirmed", "Confirmed"
         ARRIVED = "arrived", "Arrived"
         COMPLETED = "completed", "Completed"
+        REJECTED = "rejected", "Rejected"
         CANCELLED = "cancelled", "Cancelled"
         NO_SHOW = "no_show", "No-show"
 
@@ -43,7 +45,7 @@ class Appointment(models.Model):
     status = models.CharField(
         max_length=16,
         choices=Status.choices,
-        default=Status.HELD,
+        default=Status.REQUESTED,
     )
     hold_expires_at = models.DateTimeField(
         null=True,
