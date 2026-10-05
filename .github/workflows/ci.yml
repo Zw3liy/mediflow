@@ -97,12 +97,10 @@ jobs:
     timeout-minutes: 15
 
     steps:
-      - name: Check out current revision
+      - name: Check out complete repository history
         uses: actions/checkout@v5
         with:
           fetch-depth: 0
-        with:
-          fetch-depth: 1
 
       - name: Set up Python
         uses: actions/setup-python@v6
