@@ -17,6 +17,7 @@ concurrency:
 jobs:
   django:
     name: Django and PostgreSQL
+    needs: security
     runs-on: ubuntu-latest
     timeout-minutes: 20
 
@@ -127,6 +128,7 @@ jobs:
 
   docker:
     name: Docker production smoke test
+    needs: django
     runs-on: ubuntu-latest
     timeout-minutes: 25
 
