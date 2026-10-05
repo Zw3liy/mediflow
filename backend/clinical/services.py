@@ -160,3 +160,64 @@ def create_prescription(
     )
 
     return prescription
+
+
+@transaction.atomic
+def issue_prescription(
+    *,
+    prescription_id,
+    actor,
+):
+    try:
+        prescription = (
+            Prescription.objects.select_for_update()
+            .select_related(
+                "encounter",
+                "encounter__practice",
+                "prescribed_by",
+            )
+            .get(pk=prescription_id)
+        )
+    except Prescription.DoesNotExist as error:
+        raise ValidationError(
+            "Prescription was not found."
+        ) from error
+
+    actor_is_active_doctor = Membership.objects.filter(
+        practice=prescription.encounter.practice,
+        user=actor,
+        role=Membership.Role.DOCTOR,
+        active=True,
+    ).exists()
+
+    if not actor_is_active_doctor:
+        raise ValidationError(
+            "Only an active doctor may issue prescriptions."
+        )
+
+    if prescription.prescribed_by_id != actor.id:
+        raise ValidationError(
+            "Only the prescribing doctor may issue this prescription."
+        )
+
+    if prescription.status != Prescription.Status.DRAFT:
+        raise ValidationError(
+            "Only draft prescriptions may be issued."
+        )
+
+    if not prescription.items.exists():
+        raise ValidationError(
+            "A prescription must contain at least one item."
+        )
+
+    prescription.status = Prescription.Status.ISSUED
+    prescription.issued_at = timezone.now()
+    prescription.save(
+        update_fields=[
+            "status",
+            "issued_at",
+            "updated_at",
+        ]
+    )
+
+    return prescription
