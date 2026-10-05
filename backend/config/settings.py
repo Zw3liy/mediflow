@@ -42,6 +42,7 @@ INSTALLED_APPS = [
     "tenancy",
     "patients",
     "scheduling",
+    "notifications",
     "clinical",
     "documents",
     "payments",

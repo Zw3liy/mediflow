@@ -5,6 +5,10 @@ from django.db import transaction
 from django.utils import timezone
 
 from tenancy.models import Membership
+from notifications.services import (
+    notify_appointment_approved,
+    notify_appointment_rejected,
+)
 
 from .models import Appointment
 
@@ -146,6 +150,10 @@ def approve_booking(
         ]
     )
 
+    notify_appointment_approved(
+        appointment=appointment,
+    )
+
     return appointment
 
 
@@ -210,6 +218,10 @@ def reject_booking(
             "reviewed_at",
             "decision_reason",
         ]
+    )
+
+    notify_appointment_rejected(
+        appointment=appointment,
     )
 
     return appointment
