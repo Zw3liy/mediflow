@@ -1,5 +1,4 @@
 from rest_framework import serializers
-from .services import book
 
 from .models import Appointment, Service
 
@@ -51,22 +50,5 @@ class AppointmentSerializer(serializers.ModelSerializer):
         ]
 
     def validate(self, attributes):
-        starts_at = attributes.get(
-            "starts_at",
-            getattr(self.instance, "starts_at", None),
-        )
-        ends_at = attributes.get(
-            "ends_at",
-            getattr(self.instance, "ends_at", None),
-        )
-
-        if starts_at and ends_at and ends_at <= starts_at:
-            raise serializers.ValidationError(
-                {
-                    "ends_at": (
-                        "The appointment must end after it starts."
-                    ),
-                },
-            )
-
+        # The booking service calculates ends_at for both creates and updates.
         return attributes

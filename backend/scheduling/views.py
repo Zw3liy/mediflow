@@ -6,7 +6,7 @@ from rest_framework.decorators import action
 
 from tenancy.context import require_membership
 from tenancy.models import Membership
-from .services import approve_booking, book, reject_booking
+from .services import approve_booking, book, reject_booking, update_booking
 from .models import Appointment, Service
 from .serializers import AppointmentSerializer, ServiceSerializer
 from django.core.exceptions import (
@@ -166,7 +166,15 @@ class AppointmentViewSet(
     def perform_update(self, serializer):
         membership = self.get_membership()
         self.validate_related_objects(serializer, membership)
-        serializer.save(practice=membership.practice)
+        try:
+            serializer.instance = update_booking(
+                appointment_id=serializer.instance.pk,
+                practice=membership.practice,
+                actor=self.request.user,
+                changes=serializer.validated_data,
+            )
+        except DjangoValidationError as error:
+            raise ValidationError({"detail": error.messages}) from error
 
     @action(
         detail=True,

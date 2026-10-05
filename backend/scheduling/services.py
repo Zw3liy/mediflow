@@ -4,7 +4,7 @@ from django.core.exceptions import ValidationError
 from django.db import transaction
 from django.utils import timezone
 
-from tenancy.models import Membership
+from tenancy.models import Membership, Practice
 from auditlog.services import record_audit_event
 from notifications.services import (
     notify_appointment_approved,
@@ -31,6 +31,9 @@ def book(
     service,
     starts_at,
 ):
+    # Lock an existing row even when the appointment slot is empty.
+    Practice.objects.select_for_update().get(pk=practice.pk)
+
     if patient.practice_id != practice.id:
         raise ValidationError(
             "The patient does not belong to this practice."
@@ -101,6 +104,8 @@ def approve_booking(
     practice,
     actor,
 ):
+    Practice.objects.select_for_update().get(pk=practice.pk)
+
     actor_is_authorized = Membership.objects.filter(
         practice=practice,
         user=actor,
@@ -179,6 +184,8 @@ def reject_booking(
     actor,
     reason,
 ):
+    Practice.objects.select_for_update().get(pk=practice.pk)
+
     actor_is_authorized = Membership.objects.filter(
         practice=practice,
         user=actor,
@@ -251,4 +258,55 @@ def reject_booking(
         appointment=appointment,
     )
 
+    return appointment
+
+
+@transaction.atomic
+def update_booking(*, appointment_id, practice, actor, changes):
+    # Use the same lock order as creation, approval, rejection and audit writes.
+    Practice.objects.select_for_update().get(pk=practice.pk)
+    appointment = Appointment.objects.select_for_update().get(
+        pk=appointment_id, practice=practice,
+    )
+    membership = Membership.objects.filter(
+        practice=practice, user=actor, active=True,
+        role__in=[Membership.Role.OWNER, Membership.Role.RECEPTION,
+                  Membership.Role.DOCTOR, Membership.Role.NURSE],
+    ).first()
+    if membership is None or (
+        membership.role in [Membership.Role.DOCTOR, Membership.Role.NURSE]
+        and appointment.practitioner_id != actor.pk
+    ):
+        raise ValidationError("Appointment update denied.")
+    if appointment.status != Appointment.Status.REQUESTED:
+        raise ValidationError("Only requested appointments may be edited.")
+
+    patient = changes.get("patient", appointment.patient)
+    practitioner = changes.get("practitioner", appointment.practitioner)
+    service = changes.get("service", appointment.service)
+    starts_at = changes.get("starts_at", appointment.starts_at)
+    if patient.practice_id != practice.pk or service.practice_id != practice.pk:
+        raise ValidationError("Cross-practice booking denied.")
+    if not Membership.objects.filter(
+        practice=practice, user=practitioner, active=True,
+        role__in=[Membership.Role.DOCTOR, Membership.Role.NURSE],
+    ).exists():
+        raise ValidationError("The practitioner is not active in this practice.")
+    if starts_at <= timezone.now():
+        raise ValidationError("Choose a future appointment time.")
+    ends_at = starts_at + timedelta(minutes=service.duration_minutes)
+    if Appointment.objects.filter(
+        practice=practice, practitioner=practitioner,
+        status__in=ACTIVE_BOOKING_STATUSES,
+        starts_at__lt=ends_at, ends_at__gt=starts_at,
+    ).exclude(pk=appointment.pk).exists():
+        raise ValidationError("That appointment time is no longer available.")
+    appointment.patient = patient
+    appointment.practitioner = practitioner
+    appointment.service = service
+    appointment.starts_at = starts_at
+    appointment.ends_at = ends_at
+    appointment.save(update_fields=[
+        "patient", "practitioner", "service", "starts_at", "ends_at",
+    ])
     return appointment
