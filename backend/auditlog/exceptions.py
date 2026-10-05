@@ -1,0 +1,2 @@
+class AuditChainError(Exception):
+    pass

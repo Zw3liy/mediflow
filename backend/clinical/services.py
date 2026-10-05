@@ -1,84 +1,251 @@
 import hashlib
+
 from django.core.exceptions import ValidationError
 from django.db import transaction
 from django.utils import timezone
-from .models import ClinicalNote, ClinicalNoteVersion
-@transaction.atomic
-def sign_note(*, note_id, actor, body, reason=""):
-note = (
-ClinicalNote.objects.select_for_update()
-.select_related("encounter")
-.get(pk=note_id)
+from tenancy.models import Membership
+from auditlog.services import record_audit_event
+
+from .models import (
+    ClinicalNote,
+    ClinicalNoteVersion,
+    Encounter,
+    Prescription,
+    PrescriptionItem,
 )
-if note.encounter.practitioner_id != actor.id:
-raise ValidationError(
-"Only␣the␣responsible␣practitioner␣may␣sign.")
-version = note.current_version + 1
-item = ClinicalNoteVersion.objects.create(
-note=note, version=version, body=body, reason=reason,
-authored_by=actor, signed_at=timezone.now(),
-content_sha256=hashlib.sha256(
-body.encode("utf-8")).hexdigest())
-note.current_version = version
-note.save(update_fields=["current_version"])
-return item
-class Allergy(models.Model):
-patient = models.ForeignKey(
-"patients.Patient", on_delete=models.PROTECT,
-related_name="allergies")
-substance = models.CharField(max_length=160)
-reaction = models.CharField(max_length=240, blank=True)
-severity = models.CharField(max_length=20, blank=True)
-active = models.BooleanField(default=True)
-class Medication(models.Model):
-patient = models.ForeignKey(
-"patients.Patient", on_delete=models.PROTECT,
-related_name="medications")
-name = models.CharField(max_length=180)
-dose = models.CharField(max_length=100, blank=True)
-route = models.CharField(max_length=60, blank=True)
-frequency = models.CharField(max_length=100, blank=True)
-started_on = models.DateField(null=True, blank=True)
-ended_on = models.DateField(null=True, blank=True)
-class Result(models.Model):
-encounter = models.ForeignKey(
-Encounter, on_delete=models.PROTECT)
-title = models.CharField(max_length=180)
-summary = models.TextField(blank=True)
-status = models.CharField(max_length=20, default="draft")
-released_to_patient_at = models.DateTimeField(
-null=True, blank=True)
-released_by = models.ForeignKey(
-settings.AUTH_USER_MODEL, null=True,
-on_delete=models.PROTECT)
-class ClinicalDocument(models.Model):
-id = models.UUIDField(
-primary_key=True, default=uuid.uuid4, editable=False)
-practice = models.ForeignKey(
-"tenancy.Practice", on_delete=models.PROTECT)
-patient = models.ForeignKey(
-"patients.Patient", on_delete=models.PROTECT)
-category = models.CharField(max_length=40)
-original_name = models.CharField(max_length=255)
-object_key = models.CharField(max_length=500, unique=True)
-content_type = models.CharField(max_length=100)
-size_bytes = models.PositiveBigIntegerField()
-sha256 = models.CharField(max_length=64)
-scan_status = models.CharField(max_length=20, default="pending")
-uploaded_by = models.ForeignKey(
-settings.AUTH_USER_MODEL, on_delete=models.PROTECT)
-released_to_patient_at = models.DateTimeField(
-null=True, blank=True)
-class AuditEvent(models.Model):
-practice_id = models.UUIDField(db_index=True)
-actor_id = models.BigIntegerField(null=True)
-action = models.CharField(max_length=80)
-object_type = models.CharField(max_length=80)
-object_id = models.CharField(max_length=80)
-purpose = models.CharField(max_length=160)
-occurred_at = models.DateTimeField(
-auto_now_add=True, db_index=True)
-outcome = models.CharField(max_length=20)
-request_id = models.UUIDField()
-previous_hash = models.CharField(max_length=64, blank=True)
-event_hash = models.CharField(max_length=64)
+
+
+@transaction.atomic
+def sign_note(
+    *,
+    note_id,
+    actor,
+    body,
+    reason="",
+):
+    note = (
+        ClinicalNote.objects.select_for_update()
+        .select_related("encounter")
+        .get(pk=note_id)
+    )
+
+    if note.encounter.practitioner_id != actor.id:
+        raise ValidationError(
+            "Only the responsible practitioner may sign."
+        )
+
+    version = note.current_version + 1
+
+    item = ClinicalNoteVersion.objects.create(
+        note=note,
+        version=version,
+        body=body,
+        reason=reason,
+        authored_by=actor,
+        signed_at=timezone.now(),
+        content_sha256=hashlib.sha256(
+            body.encode("utf-8"),
+        ).hexdigest(),
+    )
+
+    note.current_version = version
+    note.save(
+        update_fields=[
+            "current_version",
+        ]
+    )
+
+    return item
+
+
+@transaction.atomic
+def create_prescription(
+    *,
+    encounter_id,
+    actor,
+    items,
+    general_instructions="",
+):
+    try:
+        encounter = (
+            Encounter.objects.select_for_update()
+            .select_related(
+                "practice",
+                "practitioner",
+            )
+            .get(pk=encounter_id)
+        )
+    except Encounter.DoesNotExist as error:
+        raise ValidationError(
+            "Encounter was not found."
+        ) from error
+
+    actor_is_active_doctor = Membership.objects.filter(
+        practice=encounter.practice,
+        user=actor,
+        role=Membership.Role.DOCTOR,
+        active=True,
+    ).exists()
+
+    if not actor_is_active_doctor:
+        raise ValidationError(
+            "Only an active doctor may create prescriptions."
+        )
+
+    if encounter.practitioner_id != actor.id:
+        raise ValidationError(
+            "Only the responsible doctor may prescribe."
+        )
+
+    prescription_items = list(items)
+
+    if not prescription_items:
+        raise ValidationError(
+            "At least one prescription item is required."
+        )
+
+    normalized_items = []
+
+    for item in prescription_items:
+        if not isinstance(item, dict):
+            raise ValidationError(
+                "Each prescription item must be an object."
+            )
+
+        medication_name = (
+            item.get("medication_name") or ""
+        ).strip()
+        dosage = (
+            item.get("dosage") or ""
+        ).strip()
+        frequency = (
+            item.get("frequency") or ""
+        ).strip()
+
+        if not medication_name or not dosage or not frequency:
+            raise ValidationError(
+                "Medication name, dosage, and frequency are required."
+            )
+
+        normalized_items.append(
+            {
+                "medication_name": medication_name,
+                "dosage": dosage,
+                "route": (item.get("route") or "").strip(),
+                "frequency": frequency,
+                "duration": (item.get("duration") or "").strip(),
+                "quantity": (item.get("quantity") or "").strip(),
+                "instructions": (
+                    item.get("instructions") or ""
+                ).strip(),
+            }
+        )
+
+    prescription = Prescription.objects.create(
+        encounter=encounter,
+        prescribed_by=actor,
+        status=Prescription.Status.DRAFT,
+        general_instructions=(
+            general_instructions or ""
+        ).strip(),
+    )
+
+    PrescriptionItem.objects.bulk_create(
+        [
+            PrescriptionItem(
+                prescription=prescription,
+                **item,
+            )
+            for item in normalized_items
+        ]
+    )
+
+    record_audit_event(
+        practice=encounter.practice,
+        actor=actor,
+        action="prescription.created",
+        object_type="prescription",
+        object_id=prescription.id,
+        purpose="Create prescription",
+        outcome="success",
+        metadata={
+            "status": prescription.status,
+            "item_count": len(normalized_items),
+        },
+    )
+
+    return prescription
+
+
+@transaction.atomic
+def issue_prescription(
+    *,
+    prescription_id,
+    actor,
+):
+    try:
+        prescription = (
+            Prescription.objects.select_for_update()
+            .select_related(
+                "encounter",
+                "encounter__practice",
+                "prescribed_by",
+            )
+            .get(pk=prescription_id)
+        )
+    except Prescription.DoesNotExist as error:
+        raise ValidationError(
+            "Prescription was not found."
+        ) from error
+
+    actor_is_active_doctor = Membership.objects.filter(
+        practice=prescription.encounter.practice,
+        user=actor,
+        role=Membership.Role.DOCTOR,
+        active=True,
+    ).exists()
+
+    if not actor_is_active_doctor:
+        raise ValidationError(
+            "Only an active doctor may issue prescriptions."
+        )
+
+    if prescription.prescribed_by_id != actor.id:
+        raise ValidationError(
+            "Only the prescribing doctor may issue this prescription."
+        )
+
+    if prescription.status != Prescription.Status.DRAFT:
+        raise ValidationError(
+            "Only draft prescriptions may be issued."
+        )
+
+    if not prescription.items.exists():
+        raise ValidationError(
+            "A prescription must contain at least one item."
+        )
+
+    prescription.status = Prescription.Status.ISSUED
+    prescription.issued_at = timezone.now()
+    prescription.save(
+        update_fields=[
+            "status",
+            "issued_at",
+            "updated_at",
+        ]
+    )
+
+    record_audit_event(
+        practice=prescription.encounter.practice,
+        actor=actor,
+        action="prescription.issued",
+        object_type="prescription",
+        object_id=prescription.id,
+        purpose="Issue prescription",
+        outcome="success",
+        metadata={
+            "status": prescription.status,
+        },
+    )
+
+    return prescription

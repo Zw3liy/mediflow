@@ -1,13 +1,17 @@
-from rest_framework import viewsets
+from rest_framework import status, viewsets
 from rest_framework.exceptions import ValidationError
 from rest_framework.permissions import IsAuthenticated
+from rest_framework.response import Response
+from rest_framework.decorators import action
 
 from tenancy.context import require_membership
 from tenancy.models import Membership
-
+from .services import approve_booking, book, reject_booking, update_booking
 from .models import Appointment, Service
 from .serializers import AppointmentSerializer, ServiceSerializer
-
+from django.core.exceptions import (
+    ValidationError as DjangoValidationError,
+)
 
 STAFF_ROLES = [
     "owner",
@@ -57,7 +61,7 @@ class AppointmentViewSet(
     def get_queryset(self):
         membership = self.get_membership()
 
-        return Appointment.objects.filter(
+        queryset = Appointment.objects.filter(
             practice=membership.practice,
         ).select_related(
             "practice",
@@ -65,6 +69,34 @@ class AppointmentViewSet(
             "practitioner",
             "service",
         )
+
+        if membership.role in PRACTITIONER_ROLES:
+            queryset = queryset.filter(
+                practitioner=self.request.user,
+            )
+
+        requested_status = self.request.query_params.get(
+            "status"
+        )
+
+        if requested_status:
+            valid_statuses = {
+                value
+                for value, _label in Appointment.Status.choices
+            }
+
+            if requested_status not in valid_statuses:
+                raise ValidationError(
+                    {
+                        "status": "Invalid appointment status.",
+                    }
+                )
+
+            queryset = queryset.filter(
+                status=requested_status,
+            )
+
+        return queryset
 
     def validate_related_objects(self, serializer, membership):
         instance = serializer.instance
@@ -113,9 +145,85 @@ class AppointmentViewSet(
     def perform_create(self, serializer):
         membership = self.get_membership()
         self.validate_related_objects(serializer, membership)
-        serializer.save(practice=membership.practice)
 
+        values = serializer.validated_data
+
+        try:
+            appointment = book(
+                practice=membership.practice,
+                patient=values["patient"],
+                practitioner=values["practitioner"],
+                service=values["service"],
+                starts_at=values["starts_at"],
+            )
+        except DjangoValidationError as error:
+            raise ValidationError(
+                {"detail": error.messages},
+            ) from error
+
+        serializer.instance = appointment
+        
     def perform_update(self, serializer):
         membership = self.get_membership()
         self.validate_related_objects(serializer, membership)
-        serializer.save(practice=membership.practice)
+        try:
+            serializer.instance = update_booking(
+                appointment_id=serializer.instance.pk,
+                practice=membership.practice,
+                actor=self.request.user,
+                changes=serializer.validated_data,
+            )
+        except DjangoValidationError as error:
+            raise ValidationError({"detail": error.messages}) from error
+
+    @action(
+        detail=True,
+        methods=["post"],
+    )
+    def approve(self, request, pk=None):
+        membership = self.get_membership()
+
+        try:
+            appointment = approve_booking(
+                appointment_id=pk,
+                practice=membership.practice,
+                actor=request.user,
+            )
+        except DjangoValidationError as error:
+            raise ValidationError(
+                {"detail": error.messages},
+            ) from error
+
+        serializer = self.get_serializer(appointment)
+
+        return Response(
+            serializer.data,
+            status=status.HTTP_200_OK,
+        )
+
+    @action(
+        detail=True,
+        methods=["post"],
+    )
+    def reject(self, request, pk=None):
+        membership = self.get_membership()
+        reason = request.data.get("reason") or ""
+
+        try:
+            appointment = reject_booking(
+                appointment_id=pk,
+                practice=membership.practice,
+                actor=request.user,
+                reason=reason,
+            )
+        except DjangoValidationError as error:
+            raise ValidationError(
+                {"detail": error.messages},
+            ) from error
+
+        serializer = self.get_serializer(appointment)
+
+        return Response(
+            serializer.data,
+            status=status.HTTP_200_OK,
+        )

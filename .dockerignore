@@ -1,0 +1,11 @@
+.git
+.env
+.env.*
+!.env.example
+.venv
+__pycache__
+*.pyc
+backend/db.sqlite3
+backend/private_documents
+backend/staticfiles
+backups

@@ -1,0 +1,255 @@
+name: MediFlow CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: mediflow-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  django:
+    name: Django and PostgreSQL
+    needs: security
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: mediflow_test
+          POSTGRES_USER: mediflow
+          POSTGRES_PASSWORD: ci-database-password
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U mediflow -d mediflow_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+
+    env:
+      POSTGRES_DB: mediflow_test
+      POSTGRES_USER: mediflow
+      POSTGRES_PASSWORD: ci-database-password
+      POSTGRES_HOST: 127.0.0.1
+      POSTGRES_PORT: "5432"
+      DJANGO_SECRET_KEY: ci-only-secret-key-not-used-in-production
+      DJANGO_DEBUG: "False"
+      DJANGO_ALLOWED_HOSTS: localhost,127.0.0.1
+      DJANGO_SECURE_SSL_REDIRECT: "False"
+      DJANGO_SECURE_HSTS_SECONDS: "0"
+      CLAMAV_HOST: 127.0.0.1
+      CLAMAV_PORT: "3310"
+
+    defaults:
+      run:
+        working-directory: backend
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+
+      - name: Install dependencies
+        run: python -m pip install --requirement requirements.txt
+
+      - name: Compile Python
+        run: python -m compileall -q .
+
+      - name: Run Django system checks
+        run: python manage.py check
+
+      - name: Check migration drift
+        run: python manage.py makemigrations --check --dry-run
+
+      - name: Run migrations
+        run: python manage.py migrate --noinput
+
+      - name: Run full test suite
+        run: python manage.py test -v 1
+
+      - name: Run deployment checks
+        env:
+          DJANGO_SECURE_SSL_REDIRECT: "True"
+          DJANGO_SECURE_HSTS_SECONDS: "31536000"
+        run: python manage.py check --deploy
+
+  security:
+    name: Dependency and secret security
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Check out complete repository history
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+
+      - name: Audit Python dependencies
+        run: |
+          python -m pip install pip-audit
+          python -m pip_audit \
+            --requirement backend/requirements.txt \
+            --strict
+
+      - name: Scan complete Git history for secrets
+        run: |
+          docker run --rm \
+            -v "$PWD:/repo" \
+            zricethezav/gitleaks:v8.24.3 \
+            detect \
+            --source=/repo \
+            --redact \
+            --verbose
+
+  docker:
+    name: Docker production smoke test
+    needs: django
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Create CI environment
+        run: |
+          cat > .env <<'ENV'
+          POSTGRES_DB=mediflow
+          POSTGRES_USER=mediflow
+          POSTGRES_PASSWORD=ci-database-password
+          POSTGRES_HOST=db
+          POSTGRES_PORT=5432
+          POSTGRES_CONN_MAX_AGE=60
+          DJANGO_SECRET_KEY=ci-only-docker-secret
+          DJANGO_DEBUG=False
+          DJANGO_ALLOWED_HOSTS=localhost,127.0.0.1
+          DJANGO_CSRF_TRUSTED_ORIGINS=
+          DJANGO_SECURE_SSL_REDIRECT=False
+          DJANGO_SECURE_HSTS_SECONDS=0
+          CLAMAV_HOST=clamav
+          CLAMAV_PORT=3310
+          CLAMAV_TIMEOUT=30
+          DOCUMENT_DOWNLOAD_TOKEN_MAX_AGE=300
+          MINIO_ROOT_USER=mediflow
+          MINIO_ROOT_PASSWORD=ci-minio-password
+          BACKUP_RETENTION_DAYS=30
+          BACKUP_INTERVAL_SECONDS=86400
+          ENV
+
+      - name: Validate Compose
+        run: docker compose config --quiet
+
+      - name: Build web image
+        run: docker compose build web
+
+      - name: Start production dependencies
+        run: docker compose up -d db clamav
+
+      - name: Start production web service
+        run: docker compose up -d web
+
+      - name: Wait for healthy web service
+        run: |
+          web_container_id="$(docker compose ps -q web)"
+
+          if [ -z "$web_container_id" ]; then
+            echo "The web container was not created."
+            docker compose ps -a
+            exit 1
+          fi
+
+          for attempt in $(seq 1 60); do
+            health="$(
+              docker inspect \
+                --format='{{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}' \
+                "$web_container_id" 2>/dev/null || true
+            )"
+
+            if [ "$health" = "healthy" ]; then
+              exit 0
+            fi
+
+            if [ "$health" = "unhealthy" ]; then
+              docker compose logs web
+              exit 1
+            fi
+
+            sleep 5
+          done
+
+          docker compose ps
+          docker compose logs web
+          exit 1
+
+      - name: Verify PostgreSQL runtime
+        run: |
+          vendor="$(
+            docker compose exec -T web \
+              python manage.py shell -c \
+              'from django.db import connection; print(connection.vendor)' |
+            tail -n 1
+          )"
+          test "$vendor" = "postgresql"
+
+      - name: Verify health endpoints
+        run: |
+          curl --fail --silent --show-error \
+            http://127.0.0.1:8000/health/live/
+          curl --fail --silent --show-error \
+            http://127.0.0.1:8000/health/ready/
+
+      - name: Show container logs on failure
+        if: failure()
+        run: |
+          docker compose ps -a
+          docker compose logs --tail=200
+
+      - name: Stop containers
+        if: always()
+        run: docker compose down --volumes
+
+  deployment-gate:
+    name: Production deployment gate
+    needs:
+      - django
+      - security
+      - docker
+    if: >-
+      github.event_name == 'push' &&
+      github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    environment:
+      name: production
+
+    steps:
+      - name: Confirm deployable revision
+        run: |
+          echo "All production gates passed."
+          echo "Deployable revision: $GITHUB_SHA"

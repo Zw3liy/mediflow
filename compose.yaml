@@ -36,7 +36,120 @@ services:
     ports:
       - "127.0.0.1:9001:9001"
 
+
+  web:
+    build:
+      context: ./backend
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      POSTGRES_HOST: db
+      POSTGRES_PORT: "5432"
+      CLAMAV_HOST: clamav
+      CLAMAV_PORT: "3310"
+      DOCUMENT_STORAGE_ROOT: /app/private_documents
+    command:
+      - sh
+      - -c
+      - python manage.py migrate && python manage.py collectstatic --noinput && gunicorn config.wsgi:application --bind 0.0.0.0:8000 --workers 2 --timeout 60
+    volumes:
+      - private_documents:/app/private_documents
+    ports:
+      - "127.0.0.1:8000:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+      clamav:
+        condition: service_healthy
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - python -c "import urllib.request; request=urllib.request.Request('http://127.0.0.1:8000/health/ready/', headers={'X-Forwarded-Proto':'https'}); urllib.request.urlopen(request, timeout=5)"
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+
+  clamav:
+    image: clamav/clamav:stable
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:3310:3310"
+    volumes:
+      - clamav_data:/var/lib/clamav
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - clamdscan --ping 1 >/dev/null 2>&1
+      interval: 30s
+      timeout: 10s
+      retries: 10
+      start_period: 90s
+
+  backup:
+    image: postgres:16-alpine
+    profiles:
+      - operations
+    env_file:
+      - .env
+    environment:
+      POSTGRES_HOST: db
+      POSTGRES_PORT: "5432"
+    depends_on:
+      db:
+        condition: service_healthy
+    volumes:
+      - ./backups:/backups
+      - private_documents:/private_documents:ro
+      - ./ops:/ops:ro
+    entrypoint:
+      - /bin/sh
+      - /ops/backup.sh
+
+  backup-scheduler:
+    image: postgres:16-alpine
+    profiles:
+      - automation
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      POSTGRES_HOST: db
+      POSTGRES_PORT: "5432"
+    depends_on:
+      db:
+        condition: service_healthy
+    volumes:
+      - ./backups:/backups
+      - private_documents:/private_documents:ro
+      - ./ops:/ops:ro
+    entrypoint:
+      - /bin/sh
+      - /ops/backup_scheduler.sh
+
+  restore-verify:
+    image: postgres:16-alpine
+    profiles:
+      - operations
+    env_file:
+      - .env
+    environment:
+      POSTGRES_HOST: db
+      POSTGRES_PORT: "5432"
+    depends_on:
+      db:
+        condition: service_healthy
+    volumes:
+      - ./backups:/backups:ro
+      - ./ops:/ops:ro
+    entrypoint:
+      - /bin/sh
+      - /ops/verify_restore.sh
+
 volumes:
   postgres_data:
   redis_data:
   minio_data:
+  clamav_data:
+  private_documents:

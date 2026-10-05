@@ -127,3 +127,76 @@ class ClinicalNoteVersion(models.Model):
                 name="uq_note_version",
             ),
         ]
+
+
+class Prescription(models.Model):
+    class Status(models.TextChoices):
+        DRAFT = "draft", "Draft"
+        ISSUED = "issued", "Issued"
+        CANCELLED = "cancelled", "Cancelled"
+
+    encounter = models.ForeignKey(
+        Encounter,
+        on_delete=models.PROTECT,
+        related_name="prescriptions",
+    )
+    prescribed_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.PROTECT,
+        related_name="prescriptions",
+    )
+    status = models.CharField(
+        max_length=16,
+        choices=Status.choices,
+        default=Status.DRAFT,
+    )
+    general_instructions = models.TextField(
+        blank=True,
+        default="",
+    )
+    issued_at = models.DateTimeField(
+        null=True,
+        blank=True,
+    )
+    created_at = models.DateTimeField(
+        auto_now_add=True,
+    )
+    updated_at = models.DateTimeField(
+        auto_now=True,
+    )
+
+
+class PrescriptionItem(models.Model):
+    prescription = models.ForeignKey(
+        Prescription,
+        on_delete=models.PROTECT,
+        related_name="items",
+    )
+    medication_name = models.CharField(
+        max_length=180,
+    )
+    dosage = models.CharField(
+        max_length=100,
+    )
+    route = models.CharField(
+        max_length=60,
+        blank=True,
+        default="",
+    )
+    frequency = models.CharField(
+        max_length=100,
+    )
+    duration = models.CharField(
+        max_length=100,
+        blank=True,
+        default="",
+    )
+    quantity = models.CharField(
+        max_length=80,
+        blank=True,
+        default="",
+    )
+    instructions = models.TextField(
+        blank=True,
+        default="",
+    )
