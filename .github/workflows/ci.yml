@@ -267,6 +267,19 @@ jobs:
             http://127.0.0.1:8000/static/portal/app.js
           test -s /tmp/portal.js
 
+      - name: Verify scheduled document scanning
+        run: |
+          docker compose --profile automation up -d --build document-scanner
+          scanner_id="$(docker compose ps -q document-scanner)"
+          test -n "$scanner_id"
+          test "$(docker inspect --format='{{.State.Running}}' "$scanner_id")" = "true"
+          docker compose exec -T document-scanner python manage.py scan_documents
+
+      - name: Verify backup and isolated restore
+        run: |
+          docker compose --profile operations run --rm backup
+          docker compose --profile operations run --rm restore-verify
+
       - name: Show container logs on failure
         if: failure()
         run: |
@@ -275,7 +288,7 @@ jobs:
 
       - name: Stop containers
         if: always()
-        run: docker compose down --volumes
+        run: docker compose --profile automation --profile operations down --volumes
 
   deployment-gate:
     name: Production deployment gate

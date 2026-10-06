@@ -29,7 +29,7 @@ declare a clinical deployment ready until the runtime steps below are recorded.
    HTTP-only configuration and unsafe cookie settings cause startup to fail.
 5. In the planned deployment window, run `docker compose up -d --build web`.
    Startup applies the additive login-attempt migration and collects static files.
-   Enable `docker compose --profile automation up -d --build backup-scheduler maintenance`.
+   Enable `docker compose --profile automation up -d --build backup-scheduler maintenance document-scanner`.
    Verify web health and inspect recent logs without disclosing credentials.
 6. Keep HSTS subdomain/preload options off until every affected hostname is
    verified. Increase the HSTS duration only after HTTPS and renewal are proven.
@@ -96,6 +96,10 @@ HTTP demo can use that non-production mode, but this is not a production workaro
   restrictive creation permissions. Restore verification stops on SQL restore
   errors. The web and maintenance containers drop Linux capabilities and cannot
   acquire new privileges. This does not replace host protection.
+- The automation profile scans pending PDFs every 15 seconds. Scanning failures
+  keep documents unavailable; monitor worker exits and failed scan statuses.
+  A clean scan still requires staff release before patient downloads. CI starts
+  the scanner and exercises backup plus restoration to a separate temporary DB.
 
 ## Backup and recovery evidence
 
