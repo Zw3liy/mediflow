@@ -1,0 +1,22 @@
+# Apply only on a permanent server with a real domain pointing to its public IP.
+services:
+  proxy:
+    image: caddy:2.11.4-alpine
+    restart: unless-stopped
+    environment:
+      MEDIFLOW_DOMAIN: ${MEDIFLOW_DOMAIN:?Set the permanent domain}
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - ./ops/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      web:
+        condition: service_healthy
+
+volumes:
+  caddy_data:
+  caddy_config:

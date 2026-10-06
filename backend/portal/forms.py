@@ -1,6 +1,5 @@
 from django import forms
 from django.contrib.auth import get_user_model
-from django.contrib.auth.forms import UserCreationForm
 from clinical.models import Encounter
 from patients.models import Patient
 from scheduling.models import Appointment, Service
@@ -96,11 +95,15 @@ class PatientAccountForm(PatientForm):
         fields = ["portal_user"]
 
 
-class PracticeUserForm(UserCreationForm):
+class PracticeUserForm(forms.ModelForm):
+    delivery = forms.ChoiceField(label="Account setup", choices=[
+        ("invite", "Email a secure invitation"), ("password", "Set an initial password privately")])
+    password1 = forms.CharField(label="Initial password", required=False, widget=forms.PasswordInput)
+    password2 = forms.CharField(label="Confirm password", required=False, widget=forms.PasswordInput)
     patient = forms.ModelChoiceField(queryset=Patient.objects.none(), required=False,
         label="Patient record", help_text="Add the patient record first, then select it here.")
 
-    class Meta(UserCreationForm.Meta):
+    class Meta:
         model = get_user_model()
         fields = ["username", "first_name", "last_name", "email"]
 
@@ -115,3 +118,40 @@ class PracticeUserForm(UserCreationForm):
             self.fields["patient"].label_from_instance = lambda p: f"{p.given_name} {p.family_name} · {p.file_number}"
         else:
             del self.fields["patient"]
+
+    def clean_email(self):
+        email = self.cleaned_data.get("email", "").strip()
+        if email and get_user_model().objects.filter(email__iexact=email).exists():
+            raise forms.ValidationError("Use an email address belonging only to this account owner.")
+        return email
+
+    def clean(self):
+        values = super().clean()
+        if values.get("delivery") == "invite":
+            from securityguard.accounts import mail_ready
+            if not values.get("email"):
+                self.add_error("email", "An email address is required for an invitation.")
+            if not mail_ready():
+                self.add_error("delivery", "Email invitations are unavailable until your HTTPS address and email service are configured.")
+        elif values.get("delivery") == "password":
+            from django.contrib.auth.password_validation import validate_password
+            password = values.get("password1", "")
+            if password != values.get("password2", ""):
+                self.add_error("password2", "Passwords do not match.")
+            try:
+                candidate = get_user_model()(username=values.get("username", ""),
+                    first_name=values.get("first_name", ""), last_name=values.get("last_name", ""), email=values.get("email", ""))
+                validate_password(password, candidate)
+            except forms.ValidationError as error:
+                self.add_error("password1", error)
+        return values
+
+    def save(self, commit=True):
+        user = super().save(commit=False)
+        if self.cleaned_data["delivery"] == "invite":
+            user.set_unusable_password()
+        else:
+            user.set_password(self.cleaned_data["password1"])
+        if commit:
+            user.save()
+        return user

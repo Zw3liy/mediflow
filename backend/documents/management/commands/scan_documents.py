@@ -33,6 +33,9 @@ class Command(BaseCommand):
                 scanner=scanner,
             )
 
+        from django.utils import timezone
+        from securityguard.models import OperationalHeartbeat
+        OperationalHeartbeat.objects.update_or_create(name="document-scanner", defaults={"last_success": timezone.now()})
         self.stdout.write(
             self.style.SUCCESS(
                 f"Scanned {len(document_ids)} pending document(s)."

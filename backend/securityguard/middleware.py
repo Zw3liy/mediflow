@@ -55,11 +55,11 @@ class SecurityGuardMiddleware:
     def process_view(self, request, view_func, view_args, view_kwargs):
         # Applies before password hashing, across reception/doctor/patient/admin.
         if request.method != "POST" or not (
-            request.path == "/admin/login/" or
-            request.path.startswith("/app/login/")
+            request.path in ("/admin/login/", "/api-auth/login/") or
+            request.path.startswith(("/app/login/", "/app/password/", "/app/invite/", "/app/security/mfa/"))
         ):
             return None
-        username = request.POST.get("username", "")
+        username = request.POST.get("username") or request.POST.get("email") or (str(request.user.pk) if request.user.is_authenticated else request.path)
         account = bucket_key("account", username.strip().casefold()[:256])
         # Never trust client-supplied X-Forwarded-For. A proxy may share this bucket.
         address = bucket_key("address", request.META.get("REMOTE_ADDR", "unknown"))

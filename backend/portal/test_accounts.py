@@ -21,7 +21,7 @@ class AccountRegistrationTests(TestCase):
 
     def payload(self, **extra):
         password = 'Clinic-' + 'a7B9x2Q4' * 2
-        return dict(username='new-account', first_name='Test', last_name='Account',
+        return dict(delivery='password', username='new-account', first_name='Test', last_name='Account',
                     password1=password, password2=password, practice=str(self.practice.pk), **extra)
 
     def test_reception_creates_doctor_without_admin_privileges(self):

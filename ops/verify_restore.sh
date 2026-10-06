@@ -52,8 +52,10 @@ tar -tzf "$backup_dir/private_documents.tar.gz" >/dev/null
 export PGPASSWORD="${POSTGRES_PASSWORD}"
 
 temporary_database="mediflow_restore_verify_$$"
+restored_documents="$(mktemp -d)"
 
 cleanup() {
+    rm -rf -- "$restored_documents"
     dropdb \
         --host="${POSTGRES_HOST:-db}" \
         --port="${POSTGRES_PORT:-5432}" \
@@ -62,6 +64,9 @@ cleanup() {
         "$temporary_database" >/dev/null 2>&1 || true
 }
 trap cleanup EXIT INT TERM
+
+tar -xzf "$backup_dir/private_documents.tar.gz" -C "$restored_documents"
+document_count="$(find "$restored_documents" -type f | wc -l | tr -d ' ')"
 
 createdb \
     --host="${POSTGRES_HOST:-db}" \
@@ -100,3 +105,4 @@ esac
 printf 'Restore verified: %s (%s migrations)\n' \
     "$backup_dir" \
     "$migration_count"
+printf 'Document archive restored: %s file(s) in temporary storage.\n' "$document_count"

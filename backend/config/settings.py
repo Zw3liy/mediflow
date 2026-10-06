@@ -69,6 +69,8 @@ INSTALLED_APPS = [
     "tenancy",
     "portal",
     "securityguard",
+    "django_otp",
+    "django_otp.plugins.otp_totp",
     "patients",
     "scheduling",
     "notifications",
@@ -86,7 +88,9 @@ MIDDLEWARE = [
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
     "django.contrib.auth.middleware.AuthenticationMiddleware",
+    "django_otp.middleware.OTPMiddleware",
     "securityguard.middleware.SecurityGuardMiddleware",
+    "securityguard.access.MFAAccessMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
 ]
@@ -241,3 +245,38 @@ REST_FRAMEWORK = {
 LOGIN_URL = "/app/login/"
 LOGIN_REDIRECT_URL = "/app/"
 LOGOUT_REDIRECT_URL = "/app/login/"
+
+# External services stay disabled until their credentials and stable origin are set.
+PUBLIC_BASE_URL = os.environ.get("MEDIFLOW_PUBLIC_URL", "").rstrip("/")
+EMAIL_ENABLED = os.environ.get("MEDIFLOW_EMAIL_ENABLED", "False").lower() == "true"
+EMAIL_BACKEND = "django.core.mail.backends.smtp.EmailBackend"
+EMAIL_HOST = os.environ.get("EMAIL_HOST", "")
+EMAIL_PORT = int(os.environ.get("EMAIL_PORT", "587"))
+EMAIL_HOST_USER = os.environ.get("EMAIL_HOST_USER", "")
+EMAIL_HOST_PASSWORD = os.environ.get("EMAIL_HOST_PASSWORD", "")
+EMAIL_USE_TLS = True
+EMAIL_TIMEOUT = 15
+DEFAULT_FROM_EMAIL = os.environ.get("DEFAULT_FROM_EMAIL", "")
+PASSWORD_RESET_TIMEOUT = 3600
+ADMIN_MFA_REQUIRED = os.environ.get("MEDIFLOW_ADMIN_MFA_REQUIRED", str(PRODUCTION_MODE)).lower() == "true"
+OTP_TOTP_ISSUER = "MediFlow"
+OTP_TOTP_THROTTLE_FACTOR = 2
+PRIVACY_CONTACT = os.environ.get("MEDIFLOW_PRIVACY_CONTACT", "")
+PRACTICE_OPERATOR = os.environ.get("MEDIFLOW_OPERATOR", "")
+LOGGING = {
+    "version": 1, "disable_existing_loggers": False,
+    "filters": {"secret_paths": {"()": "securityguard.logging.SecretPathFilter"}},
+    "handlers": {"console": {"class": "logging.StreamHandler", "filters": ["secret_paths"]},
+                 "operations": {"class": "securityguard.logging.OperationalErrorHandler", "level": "ERROR"}},
+    "loggers": {
+        "django.security.csrf": {"handlers": ["console"], "level": "WARNING", "propagate": False},
+        "django.request": {"handlers": ["console", "operations"], "level": "ERROR", "propagate": False},
+    },
+}
+
+OPERATIONS_EMAIL = os.environ.get("MEDIFLOW_OPERATIONS_EMAIL", "")
+BACKUP_ROOT = Path(os.environ.get("MEDIFLOW_BACKUP_ROOT", "/backups"))
+EXTERNAL_MONITOR_CONFIGURED = os.environ.get("MEDIFLOW_EXTERNAL_MONITOR_CONFIGURED", "False").lower() == "true"
+OFFSITE_BACKUP_REQUIRED = os.environ.get("MEDIFLOW_OFFSITE_BACKUP_REQUIRED", "False").lower() == "true"
+
+RETENTION_NOTICE = os.environ.get("MEDIFLOW_RETENTION_NOTICE", "")

@@ -178,6 +178,11 @@ jobs:
       - name: Validate Compose
         run: docker compose config --quiet
 
+      - name: Validate permanent HTTPS configuration
+        run: |
+          MEDIFLOW_DOMAIN=mediflow.invalid docker compose -f compose.yaml -f compose.production.yaml config --quiet
+          docker run --rm -e MEDIFLOW_DOMAIN=mediflow.invalid -v "$PWD/ops/Caddyfile:/etc/caddy/Caddyfile:ro" caddy:2.11.4-alpine caddy validate --config /etc/caddy/Caddyfile
+
       - name: Build web image
         run: docker compose build web
 
@@ -275,10 +280,25 @@ jobs:
           test "$(docker inspect --format='{{.State.Running}}' "$scanner_id")" = "true"
           docker compose exec -T document-scanner python manage.py scan_documents
 
+      - name: Seed harmless document recovery fixture
+        run: |
+          docker compose exec -T web python -c "from pathlib import Path; Path('/app/private_documents/recovery-fixture.pdf').write_bytes(b'%PDF-1.4 recovery fixture')"
+
       - name: Verify backup and isolated restore
         run: |
           docker compose --profile operations run --rm backup
           docker compose --profile operations run --rm restore-verify
+
+      - name: Verify encrypted backup recovery with disposable repository
+        run: |
+          mkdir -p "$RUNNER_TEMP/restic-recovery"
+          export RESTIC_PASSWORD="$(openssl rand -hex 32)"
+          docker run --rm -e RESTIC_PASSWORD -e RESTIC_REPOSITORY=/repo -v "$RUNNER_TEMP/restic-recovery:/repo" restic/restic:0.19.1 init
+          docker run --rm -e RESTIC_PASSWORD -e RESTIC_REPOSITORY=/repo -v "$RUNNER_TEMP/restic-recovery:/repo" -v "$PWD/backups:/backups:ro" restic/restic:0.19.1 backup /backups
+          docker run --rm -e RESTIC_PASSWORD -e RESTIC_REPOSITORY=/repo -v "$RUNNER_TEMP/restic-recovery:/repo" restic/restic:0.19.1 check --read-data
+          docker run --rm -e RESTIC_PASSWORD -e RESTIC_REPOSITORY=/repo -v "$RUNNER_TEMP/restic-recovery:/repo" restic/restic:0.19.1 restore latest --target /repo/recovered
+          find "$RUNNER_TEMP/restic-recovery/recovered" -name database.dump -type f | head -n 1 | xargs test -s
+          find "$RUNNER_TEMP/restic-recovery/recovered" -name private_documents.tar.gz -type f | head -n 1 | xargs test -s
 
       - name: Show container logs on failure
         if: failure()

@@ -343,16 +343,69 @@ def create_account(request, account_role):
                 if patient:
                     patient.portal_user = user
                     patient.save(update_fields=["portal_user", "updated_at"])
+                if form.cleaned_data["delivery"] == "invite":
+                    from securityguard.accounts import queue_invitation
+                    queue_invitation(user, practice)
                 record_audit_event(practice=practice, actor=request.user,
                     action="account.created", object_type="user", object_id=user.pk,
                     purpose=f"Create {account_role} account for practice", outcome="success")
         except (IntegrityError, Patient.DoesNotExist):
             form.add_error(None, "The username or patient record is no longer available. Refresh and try again.")
         else:
-            messages.success(request, f"{account_role.title()} account created. Share the username and password privately with its owner.")
+            messages.success(request, f"{account_role.title()} account created. " + ("Invitation queued for delivery." if form.cleaned_data["delivery"] == "invite" else "Share the username and password privately with its owner."))
             return redirect(f"/app/{ROLE_PATHS[role]}/?practice={practice.pk}#patients")
     return render(request, "portal/form.html", {
         "form": form, "practice": practice, "practices": practices,
         "role": role, "workspace": ROLE_PATHS[role], "kind": "new_account",
         "title": f"Add {account_role} account",
     })
+
+
+@never_cache
+@login_required
+def accounts(request):
+    practice, role, practices = scope(request, ["owner", "reception"])
+    if not practice:
+        raise PermissionDenied()
+    members = Membership.objects.filter(practice=practice, role__in=["doctor", "patient"]).select_related("user").order_by("role", "user__username")
+    return render(request, "portal/accounts.html", {"title": "Manage accounts", "members": members,
+        "practice": practice, "practices": practices, "role": role, "workspace": ROLE_PATHS[role]})
+
+
+@never_cache
+@login_required
+@require_POST
+def account_action(request, pk, operation):
+    practice, role, practices = scope(request, ["owner", "reception"])
+    if not practice or operation not in ["disable", "enable", "invite"]:
+        raise PermissionDenied()
+    from securityguard.accounts import queue_invitation, mail_ready
+    from securityguard.models import AccountInvitation
+    with transaction.atomic():
+        Practice.objects.select_for_update().get(pk=practice.pk)
+        member = get_object_or_404(Membership.objects.select_for_update(), pk=pk,
+            practice=practice, role__in=["doctor", "patient"], user__is_superuser=False, user__is_staff=False)
+        if member.user_id == request.user.pk:
+            raise PermissionDenied("You cannot change your own access here.")
+        if operation == "invite":
+            if not member.active or not member.user.is_active or not mail_ready() or not member.user.email:
+                messages.error(request, "Invitations require active access, the account owner's email and a configured email service.")
+                return redirect(f"/app/accounts/?practice={practice.pk}")
+            queue_invitation(member.user, practice)
+        else:
+            member.active = operation == "enable"
+            member.save(update_fields=["active"])
+            if operation == "disable":
+                AccountInvitation.objects.filter(user=member.user, practice=practice, accepted_at__isnull=True).update(expires_at=timezone.now())
+        record_audit_event(practice=practice, actor=request.user, action=f"account.{operation}",
+            object_type="membership", object_id=member.pk, purpose="Manage practice account access", outcome="success")
+    messages.success(request, "Invitation queued." if operation == "invite" else "Practice access updated.")
+    return redirect(f"/app/accounts/?practice={practice.pk}")
+
+
+@never_cache
+def privacy(request):
+    from django.conf import settings
+    return render(request, "portal/privacy.html", {"title": "Privacy and your information",
+        "operator": settings.PRACTICE_OPERATOR, "contact": settings.PRIVACY_CONTACT,
+        "retention": settings.RETENTION_NOTICE})
