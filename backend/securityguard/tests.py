@@ -118,7 +118,7 @@ class ProductionGuardTests(TestCase):
     @override_settings(DEBUG=False, SECRET_KEY="test-secret-0123456789-abcdefghijklmnopqrstuvwxyz-ABCDEFGHIJKLMNOPQRSTUVWXYZ",
         ALLOWED_HOSTS=["clinic.example.org", "127.0.0.1"], SECURE_SSL_REDIRECT=True, SECURE_HSTS_SECONDS=300,
         SESSION_COOKIE_SECURE=True, CSRF_COOKIE_SECURE=True,
-        DATABASES={"default": {"ENGINE": "django.db.backends.postgresql", "PASSWORD": "strong-test-key-0123456789-abcdef"}})
+        DATABASES={"default": {"ENGINE": "django.db.backends.postgresql", "PASSWORD": "test-" + "a1b2c3" * 4}})
     def test_explicit_safe_configuration_accepted(self):
         self.assertEqual(configuration_errors(settings), [])
         with override_settings(PRODUCTION_MODE=True):
