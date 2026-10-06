@@ -1,0 +1,1 @@
+{% extends 'portal/base.html' %}{% block content %}<section class="panel"><h1>Your workspace is being prepared.</h1><p>You need an active practice membership to access MediFlow. Contact your practice administrator.</p>{% if request.user.is_superuser %}<a class="button" href="/admin/tenancy/practice/add/">Create a practice</a>{% endif %}</section>{% endblock %}

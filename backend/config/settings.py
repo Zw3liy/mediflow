@@ -66,6 +66,7 @@ INSTALLED_APPS = [
     "corsheaders",
     "rest_framework",
     "tenancy",
+    "portal",
     "patients",
     "scheduling",
     "notifications",
@@ -208,3 +209,7 @@ if not DEBUG:
         SECURE_HSTS_SECONDS > 0
     )
     SECURE_HSTS_PRELOAD = SECURE_HSTS_SECONDS > 0
+
+LOGIN_URL = "/app/login/"
+LOGIN_REDIRECT_URL = "/app/"
+LOGOUT_REDIRECT_URL = "/app/login/"
