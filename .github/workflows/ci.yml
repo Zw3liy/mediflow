@@ -297,8 +297,8 @@ jobs:
           docker run --rm -e RESTIC_PASSWORD -e RESTIC_REPOSITORY=/repo -v "$RUNNER_TEMP/restic-recovery:/repo" -v "$PWD/backups:/backups:ro" restic/restic:0.19.1 backup /backups
           docker run --rm -e RESTIC_PASSWORD -e RESTIC_REPOSITORY=/repo -v "$RUNNER_TEMP/restic-recovery:/repo" restic/restic:0.19.1 check --read-data
           docker run --rm -e RESTIC_PASSWORD -e RESTIC_REPOSITORY=/repo -v "$RUNNER_TEMP/restic-recovery:/repo" restic/restic:0.19.1 restore latest --target /repo/recovered
-          find "$RUNNER_TEMP/restic-recovery/recovered" -name database.dump -type f | head -n 1 | xargs test -s
-          find "$RUNNER_TEMP/restic-recovery/recovered" -name private_documents.tar.gz -type f | head -n 1 | xargs test -s
+          docker run --rm --entrypoint /bin/sh -v "$RUNNER_TEMP/restic-recovery:/repo" restic/restic:0.19.1 -c 'find /repo/recovered -name database.dump -type f | head -n 1 | xargs test -s'
+          docker run --rm --entrypoint /bin/sh -v "$RUNNER_TEMP/restic-recovery:/repo" restic/restic:0.19.1 -c 'find /repo/recovered -name private_documents.tar.gz -type f | head -n 1 | xargs test -s'
 
       - name: Show container logs on failure
         if: failure()
