@@ -170,3 +170,17 @@ class LifecycleTests(TestCase):
             'Forbidden: %s', ('/app/invite/secret-token/',), None)
         SecretPathFilter().filter(record)
         self.assertNotIn('secret-token', record.getMessage())
+
+    @override_settings(PUBLIC_BASE_URL='https://demo.trycloudflare.com', EMAIL_ENABLED=False,
+        ADMIN_MFA_REQUIRED=False, PRIVACY_CONTACT='', PRACTICE_OPERATOR='', RETENTION_NOTICE='')
+    def test_release_gate_reports_configuration_and_operational_gaps_together(self):
+        from io import StringIO
+        from unittest.mock import patch
+        from django.core.management.base import CommandError
+        with patch('securityguard.management.commands.check_release_readiness.call_command',
+                side_effect=[None, CommandError('Backup evidence missing.')]):
+            with self.assertRaises(CommandError) as caught:
+                call_command('check_release_readiness', stdout=StringIO())
+        self.assertIn('permanent HTTPS', str(caught.exception))
+        self.assertIn('SMTP', str(caught.exception))
+        self.assertIn('Backup evidence missing', str(caught.exception))

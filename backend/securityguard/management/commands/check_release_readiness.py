@@ -37,7 +37,10 @@ class Command(BaseCommand):
             failures.append('Configure and test operational alerts and independent uptime monitoring.')
         if not settings.OFFSITE_BACKUP_REQUIRED:
             failures.append('Enable and verify encrypted offsite backups.')
-        call_command('check_operations')
+        try:
+            call_command('check_operations')
+        except CommandError as error:
+            failures.append(str(error))
         if failures:
             raise CommandError('\n'.join(failures))
         self.stdout.write('Automated release gates passed. Signed workflow/recovery/privacy acceptance is still required.')
