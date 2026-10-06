@@ -20,7 +20,9 @@ def mail_ready():
 
 @transaction.atomic
 def queue_invitation(user, practice):
-    if not mail_ready() or not user.email:
+    from django.contrib.auth import get_user_model
+    if (not mail_ready() or not user.email
+            or get_user_model().objects.filter(email__iexact=user.email).exclude(pk=user.pk).exists()):
         raise ImproperlyConfigured('Configure HTTPS and SMTP before sending invitations.')
     now = timezone.now()
     AccountInvitation.objects.filter(user=user, accepted_at__isnull=True).update(expires_at=now)

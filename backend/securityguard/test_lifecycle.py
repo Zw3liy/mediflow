@@ -184,3 +184,11 @@ class LifecycleTests(TestCase):
         self.assertIn('permanent HTTPS', str(caught.exception))
         self.assertIn('SMTP', str(caught.exception))
         self.assertIn('Backup evidence missing', str(caught.exception))
+
+
+    def test_shared_email_cannot_receive_account_invitation(self):
+        from django.core.exceptions import ImproperlyConfigured
+        get_user_model().objects.create_user(username='shared-address', email=self.patient.email)
+        with self.assertRaises(ImproperlyConfigured):
+            self.token()
+        self.assertFalse(AccountInvitation.objects.exists())

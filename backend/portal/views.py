@@ -2,7 +2,7 @@ from uuid import UUID
 
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
-from django.core.exceptions import PermissionDenied, ValidationError
+from django.core.exceptions import PermissionDenied, ValidationError, ImproperlyConfigured
 from django.db import IntegrityError, transaction
 from django.shortcuts import get_object_or_404, redirect, render
 from django.http import JsonResponse
@@ -349,7 +349,7 @@ def create_account(request, account_role):
                 record_audit_event(practice=practice, actor=request.user,
                     action="account.created", object_type="user", object_id=user.pk,
                     purpose=f"Create {account_role} account for practice", outcome="success")
-        except (IntegrityError, Patient.DoesNotExist):
+        except (IntegrityError, Patient.DoesNotExist, ImproperlyConfigured):
             form.add_error(None, "The username or patient record is no longer available. Refresh and try again.")
         else:
             messages.success(request, f"{account_role.title()} account created. " + ("Invitation queued for delivery." if form.cleaned_data["delivery"] == "invite" else "Share the username and password privately with its owner."))
@@ -388,8 +388,10 @@ def account_action(request, pk, operation):
         if member.user_id == request.user.pk:
             raise PermissionDenied("You cannot change your own access here.")
         if operation == "invite":
-            if not member.active or not member.user.is_active or not mail_ready() or not member.user.email:
-                messages.error(request, "Invitations require active access, the account owner's email and a configured email service.")
+            from django.contrib.auth import get_user_model
+            duplicate_email = get_user_model().objects.filter(email__iexact=member.user.email).exclude(pk=member.user_id).exists()
+            if not member.active or not member.user.is_active or not mail_ready() or not member.user.email or duplicate_email:
+                messages.error(request, "Invitations require active access, a unique account-owner email and a configured email service.")
                 return redirect(f"/app/accounts/?practice={practice.pk}")
             queue_invitation(member.user, practice)
         else:
