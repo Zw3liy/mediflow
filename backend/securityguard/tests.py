@@ -91,7 +91,7 @@ class LoginProtectionTests(TestCase):
         response = self.client.get("/app/login/")
         self.assertIn("no-store", response["Cache-Control"])
         self.assertIn("frame-ancestors 'none'", response["Content-Security-Policy"])
-        self.assertEqual(response["Referrer-Policy"], "no-referrer")
+        self.assertEqual(response["Referrer-Policy"], "same-origin")
         self.assertIn("camera=()", response["Permissions-Policy"])
         response = self.client.get("/api/patients/")
         self.assertIn("no-store", response["Cache-Control"])

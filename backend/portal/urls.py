@@ -12,6 +12,7 @@ urlpatterns = [
     path("appointments/<int:pk>/intake/", views.intake, name="portal-intake"),
     path("logout/", auth_views.LogoutView.as_view(), name="portal-logout"),
     path("patients/<uuid:pk>/account/", views.patient_account, name="portal-patient-account"),
+    path("accounts/new/<str:account_role>/", views.create_account, name="portal-create-account"),
     path("new/<str:kind>/", views.form_view, name="portal-form"),
     path("appointments/<int:pk>/<str:operation>/", views.appointment_action, name="portal-appointment-action"),
     path("prescriptions/<int:pk>/issue/", views.issue, name="portal-issue"),

@@ -224,7 +224,7 @@ SESSION_ABSOLUTE_TIMEOUT = 8 * 60 * 60
 LOGIN_ACCOUNT_LIMIT = 5
 LOGIN_ADDRESS_LIMIT = 100
 LOGIN_ATTEMPT_WINDOW = 15 * 60
-SECURE_REFERRER_POLICY = "no-referrer"
+SECURE_REFERRER_POLICY = "same-origin"
 X_FRAME_OPTIONS = "DENY"
 # Deliberate staged HSTS rollout: do not force policies on other hostnames or
 # request permanent browser preloading before the operator verifies them.

@@ -43,7 +43,7 @@ class SecurityGuardMiddleware:
                 request.session["security_last_seen"] = now.timestamp()
         if request.path.startswith(("/app/", "/admin/", "/api/")):
             patch_cache_control(response, private=True, no_store=True)
-            response["Referrer-Policy"] = "no-referrer"
+            response["Referrer-Policy"] = "same-origin"
             response["Permissions-Policy"] = "camera=(), microphone=(), geolocation=()"
         if request.path.startswith("/app/"):
             response["Content-Security-Policy"] = (

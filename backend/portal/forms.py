@@ -1,5 +1,6 @@
 from django import forms
 from django.contrib.auth import get_user_model
+from django.contrib.auth.forms import UserCreationForm
 from clinical.models import Encounter
 from patients.models import Patient
 from scheduling.models import Appointment, Service
@@ -93,3 +94,24 @@ class IntakeForm(forms.ModelForm):
 class PatientAccountForm(PatientForm):
     class Meta(PatientForm.Meta):
         fields = ["portal_user"]
+
+
+class PracticeUserForm(UserCreationForm):
+    patient = forms.ModelChoiceField(queryset=Patient.objects.none(), required=False,
+        label="Patient record", help_text="Add the patient record first, then select it here.")
+
+    class Meta(UserCreationForm.Meta):
+        model = get_user_model()
+        fields = ["username", "first_name", "last_name", "email"]
+
+    def __init__(self, *args, practice, account_role, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields["first_name"].required = True
+        self.fields["last_name"].required = True
+        if account_role == "patient":
+            self.fields["patient"].required = True
+            self.fields["patient"].queryset = Patient.objects.filter(
+                practice=practice, active=True, portal_user__isnull=True).order_by("family_name", "given_name")
+            self.fields["patient"].label_from_instance = lambda p: f"{p.given_name} {p.family_name} · {p.file_number}"
+        else:
+            del self.fields["patient"]

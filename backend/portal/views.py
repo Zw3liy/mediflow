@@ -19,7 +19,7 @@ from patients.models import Patient
 from scheduling.models import Appointment, Service
 from scheduling.services import book, approve_booking, reject_booking, doctor_approve_booking, record_intake, complete_consultation
 from tenancy.models import Membership, Practice
-from .forms import BookingForm, PatientForm, PrescriptionForm, ServiceForm, IntakeForm, PatientAccountForm
+from .forms import BookingForm, PatientForm, PrescriptionForm, ServiceForm, IntakeForm, PatientAccountForm, PracticeUserForm
 
 
 ROLE_PATHS = {"owner": "admin", "doctor": "doctor", "nurse": "doctor", "reception": "reception", "patient": "patient"}
@@ -314,3 +314,45 @@ def patient_account(request, pk):
         return redirect(f"/app/{ROLE_PATHS[role]}/?practice={practice.pk}#patients")
     return render(request, "portal/form.html", {"form":form, "practice":practice, "practices":practices,
         "role":role, "workspace":ROLE_PATHS[role], "kind":"account", "title":f"App account · {patient.given_name} {patient.family_name}"})
+
+
+@never_cache
+@login_required
+def create_account(request, account_role):
+    if account_role not in ["doctor", "patient"]:
+        raise PermissionDenied("Only doctor and patient accounts can be created here.")
+    practice, role, practices = scope(request, ["owner", "reception"])
+    if not practice:
+        raise PermissionDenied("Practice membership required.")
+    form = PracticeUserForm(request.POST if request.method == "POST" else None,
+        practice=practice, account_role=account_role)
+    if request.method == "POST" and form.is_valid():
+        try:
+            with transaction.atomic():
+                Practice.objects.select_for_update().get(pk=practice.pk)
+                patient = None
+                if account_role == "patient":
+                    patient = Patient.objects.select_for_update().get(
+                        pk=form.cleaned_data["patient"].pk, practice=practice,
+                        active=True, portal_user__isnull=True)
+                user = form.save(commit=False)
+                user.is_staff = False
+                user.is_superuser = False
+                user.save()
+                Membership.objects.create(practice=practice, user=user, role=account_role)
+                if patient:
+                    patient.portal_user = user
+                    patient.save(update_fields=["portal_user", "updated_at"])
+                record_audit_event(practice=practice, actor=request.user,
+                    action="account.created", object_type="user", object_id=user.pk,
+                    purpose=f"Create {account_role} account for practice", outcome="success")
+        except (IntegrityError, Patient.DoesNotExist):
+            form.add_error(None, "The username or patient record is no longer available. Refresh and try again.")
+        else:
+            messages.success(request, f"{account_role.title()} account created. Share the username and password privately with its owner.")
+            return redirect(f"/app/{ROLE_PATHS[role]}/?practice={practice.pk}#patients")
+    return render(request, "portal/form.html", {
+        "form": form, "practice": practice, "practices": practices,
+        "role": role, "workspace": ROLE_PATHS[role], "kind": "new_account",
+        "title": f"Add {account_role} account",
+    })
