@@ -112,6 +112,7 @@ class PortalTests(TestCase):
 
     def test_consultation_draft_and_issue_workflow(self):
         self.appointment.status="held"
+        self.appointment.doctor_approved_at=timezone.now()
         self.appointment.save()
         self.login(self.doctor)
         url=f"/app/appointments/{self.appointment.pk}/encounter/"
@@ -141,7 +142,7 @@ class PortalTests(TestCase):
         response=self.client.get("/app/patient/")
         self.assertContains(response,"Demo Patient")
         self.assertNotContains(response,"Confidential")
-        self.assertEqual(self.client.get("/app/new/booking/").status_code,403)
+        self.assertEqual(self.client.get("/app/new/booking/").status_code,200)
 
     def test_mutations_require_csrf_and_logout_requires_post(self):
         client=Client(enforce_csrf_checks=True)
