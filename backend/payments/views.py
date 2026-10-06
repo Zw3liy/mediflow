@@ -40,6 +40,8 @@ class CreateDepositCheckoutView(APIView):
     permission_classes = [IsAuthenticated]
 
     def post(self, request):
+        if settings.PRODUCTION_MODE:
+            return Response({"detail": "Online payments are unavailable until a live payment gateway is configured."}, status=503)
         input_serializer = CreateDepositCheckoutSerializer(
             data=request.data,
         )

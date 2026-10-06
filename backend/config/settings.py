@@ -15,6 +15,7 @@ from pathlib import Path
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
+PRODUCTION_MODE = os.environ.get("DJANGO_PRODUCTION", "False").lower() in {"true", "1", "yes"}
 
 
 # Quick-start development settings - unsuitable for production
@@ -67,6 +68,9 @@ INSTALLED_APPS = [
     "rest_framework",
     "tenancy",
     "portal",
+    "securityguard",
+    "django_otp",
+    "django_otp.plugins.otp_totp",
     "patients",
     "scheduling",
     "notifications",
@@ -84,6 +88,9 @@ MIDDLEWARE = [
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
     "django.contrib.auth.middleware.AuthenticationMiddleware",
+    "django_otp.middleware.OTPMiddleware",
+    "securityguard.middleware.SecurityGuardMiddleware",
+    "securityguard.access.MFAAccessMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
 ]
@@ -143,6 +150,7 @@ AUTH_PASSWORD_VALIDATORS = [
     },
     {
         "NAME": "django.contrib.auth.password_validation.MinimumLengthValidator",
+        "OPTIONS": {"min_length": 12},
     },
     {
         "NAME": "django.contrib.auth.password_validation.CommonPasswordValidator",
@@ -176,7 +184,7 @@ STATIC_ROOT = BASE_DIR / "staticfiles"
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
-DOCUMENT_STORAGE_ROOT = BASE_DIR / "private_documents"
+DOCUMENT_STORAGE_ROOT = Path(os.environ.get("DOCUMENT_STORAGE_ROOT", str(BASE_DIR / "private_documents")))
 DOCUMENT_DOWNLOAD_TOKEN_MAX_AGE = int(
     os.environ.get("DOCUMENT_DOWNLOAD_TOKEN_MAX_AGE", "300")
 )
@@ -194,7 +202,7 @@ if not DEBUG:
     )
     SECURE_SSL_REDIRECT = os.environ.get(
         "DJANGO_SECURE_SSL_REDIRECT",
-        "False",
+        "True",
     ).lower() in {
         "1",
         "true",
@@ -203,14 +211,72 @@ if not DEBUG:
     SECURE_HSTS_SECONDS = int(
         os.environ.get(
             "DJANGO_SECURE_HSTS_SECONDS",
-            "0",
+            "300" if PRODUCTION_MODE else "0",
         )
     )
-    SECURE_HSTS_INCLUDE_SUBDOMAINS = (
-        SECURE_HSTS_SECONDS > 0
-    )
-    SECURE_HSTS_PRELOAD = SECURE_HSTS_SECONDS > 0
+    # Enable these only after verifying every affected subdomain supports HTTPS.
+    SECURE_HSTS_INCLUDE_SUBDOMAINS = os.environ.get("DJANGO_HSTS_INCLUDE_SUBDOMAINS", "False").lower() == "true"
+    SECURE_HSTS_PRELOAD = os.environ.get("DJANGO_HSTS_PRELOAD", "False").lower() == "true"
+
+SESSION_COOKIE_HTTPONLY = True
+SESSION_COOKIE_SAMESITE = "Lax"
+CSRF_COOKIE_SAMESITE = "Lax"
+SESSION_COOKIE_AGE = 8 * 60 * 60
+SESSION_EXPIRE_AT_BROWSER_CLOSE = True
+SESSION_IDLE_TIMEOUT = 30 * 60
+SESSION_ABSOLUTE_TIMEOUT = 8 * 60 * 60
+LOGIN_ACCOUNT_LIMIT = 5
+LOGIN_ADDRESS_LIMIT = 100
+LOGIN_ATTEMPT_WINDOW = 15 * 60
+SECURE_REFERRER_POLICY = "same-origin"
+X_FRAME_OPTIONS = "DENY"
+# Deliberate staged HSTS rollout: do not force policies on other hostnames or
+# request permanent browser preloading before the operator verifies them.
+SILENCED_SYSTEM_CHECKS = ["security.W005", "security.W021"]
+DATA_UPLOAD_MAX_MEMORY_SIZE = 2 * 1024 * 1024
+
+# Browser APIs use CSRF-protected sessions. Native bearer authentication, when
+# deployed, is declared by the mobile views rather than HTTP Basic defaults.
+REST_FRAMEWORK = {
+    "DEFAULT_AUTHENTICATION_CLASSES": ["rest_framework.authentication.SessionAuthentication"],
+    "DEFAULT_PERMISSION_CLASSES": ["rest_framework.permissions.IsAuthenticated"],
+}
 
 LOGIN_URL = "/app/login/"
 LOGIN_REDIRECT_URL = "/app/"
 LOGOUT_REDIRECT_URL = "/app/login/"
+
+# External services stay disabled until their credentials and stable origin are set.
+PUBLIC_BASE_URL = os.environ.get("MEDIFLOW_PUBLIC_URL", "").rstrip("/")
+EMAIL_ENABLED = os.environ.get("MEDIFLOW_EMAIL_ENABLED", "False").lower() == "true"
+EMAIL_BACKEND = "django.core.mail.backends.smtp.EmailBackend"
+EMAIL_HOST = os.environ.get("EMAIL_HOST", "")
+EMAIL_PORT = int(os.environ.get("EMAIL_PORT", "587"))
+EMAIL_HOST_USER = os.environ.get("EMAIL_HOST_USER", "")
+EMAIL_HOST_PASSWORD = os.environ.get("EMAIL_HOST_PASSWORD", "")
+EMAIL_USE_TLS = True
+EMAIL_TIMEOUT = 15
+DEFAULT_FROM_EMAIL = os.environ.get("DEFAULT_FROM_EMAIL", "")
+PASSWORD_RESET_TIMEOUT = 3600
+ADMIN_MFA_REQUIRED = os.environ.get("MEDIFLOW_ADMIN_MFA_REQUIRED", str(PRODUCTION_MODE)).lower() == "true"
+OTP_TOTP_ISSUER = "MediFlow"
+OTP_TOTP_THROTTLE_FACTOR = 2
+PRIVACY_CONTACT = os.environ.get("MEDIFLOW_PRIVACY_CONTACT", "")
+PRACTICE_OPERATOR = os.environ.get("MEDIFLOW_OPERATOR", "")
+LOGGING = {
+    "version": 1, "disable_existing_loggers": False,
+    "filters": {"secret_paths": {"()": "securityguard.logging.SecretPathFilter"}},
+    "handlers": {"console": {"class": "logging.StreamHandler", "filters": ["secret_paths"]},
+                 "operations": {"class": "securityguard.logging.OperationalErrorHandler", "level": "ERROR"}},
+    "loggers": {
+        "django.security.csrf": {"handlers": ["console"], "level": "WARNING", "propagate": False},
+        "django.request": {"handlers": ["console", "operations"], "level": "ERROR", "propagate": False},
+    },
+}
+
+OPERATIONS_EMAIL = os.environ.get("MEDIFLOW_OPERATIONS_EMAIL", "")
+BACKUP_ROOT = Path(os.environ.get("MEDIFLOW_BACKUP_ROOT", "/backups"))
+EXTERNAL_MONITOR_CONFIGURED = os.environ.get("MEDIFLOW_EXTERNAL_MONITOR_CONFIGURED", "False").lower() == "true"
+OFFSITE_BACKUP_REQUIRED = os.environ.get("MEDIFLOW_OFFSITE_BACKUP_REQUIRED", "False").lower() == "true"
+
+RETENTION_NOTICE = os.environ.get("MEDIFLOW_RETENTION_NOTICE", "")

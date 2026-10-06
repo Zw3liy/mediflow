@@ -17,3 +17,7 @@ backups/
 backend/db.sqlite3
 
 backend/private_documents/
+
+.env.offsite
+.env.backup-*
+recovery-drill/

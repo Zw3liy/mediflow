@@ -1,0 +1,3 @@
+# Historical, nonfunctional test fixture; never used by a database or deployment.
+# Keep this exact fingerprint only because CI scans the complete Git history.
+3a74cc4a34812e48d06cc9e69b39f73cefe626fc:backend/securityguard/tests.py:generic-api-key:121

@@ -2,7 +2,7 @@ from uuid import UUID
 
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
-from django.core.exceptions import PermissionDenied, ValidationError
+from django.core.exceptions import PermissionDenied, ValidationError, ImproperlyConfigured
 from django.db import IntegrityError, transaction
 from django.shortcuts import get_object_or_404, redirect, render
 from django.http import JsonResponse
@@ -19,7 +19,7 @@ from patients.models import Patient
 from scheduling.models import Appointment, Service
 from scheduling.services import book, approve_booking, reject_booking, doctor_approve_booking, record_intake, complete_consultation
 from tenancy.models import Membership, Practice
-from .forms import BookingForm, PatientForm, PrescriptionForm, ServiceForm, IntakeForm, PatientAccountForm
+from .forms import BookingForm, PatientForm, PrescriptionForm, ServiceForm, IntakeForm, PatientAccountForm, PracticeUserForm
 
 
 ROLE_PATHS = {"owner": "admin", "doctor": "doctor", "nurse": "doctor", "reception": "reception", "patient": "patient"}
@@ -314,3 +314,100 @@ def patient_account(request, pk):
         return redirect(f"/app/{ROLE_PATHS[role]}/?practice={practice.pk}#patients")
     return render(request, "portal/form.html", {"form":form, "practice":practice, "practices":practices,
         "role":role, "workspace":ROLE_PATHS[role], "kind":"account", "title":f"App account · {patient.given_name} {patient.family_name}"})
+
+
+@never_cache
+@login_required
+def create_account(request, account_role):
+    if account_role not in ["doctor", "patient"]:
+        raise PermissionDenied("Only doctor and patient accounts can be created here.")
+    practice, role, practices = scope(request, ["owner", "reception"])
+    if not practice:
+        raise PermissionDenied("Practice membership required.")
+    form = PracticeUserForm(request.POST if request.method == "POST" else None,
+        practice=practice, account_role=account_role)
+    if request.method == "POST" and form.is_valid():
+        try:
+            with transaction.atomic():
+                Practice.objects.select_for_update().get(pk=practice.pk)
+                patient = None
+                if account_role == "patient":
+                    patient = Patient.objects.select_for_update().get(
+                        pk=form.cleaned_data["patient"].pk, practice=practice,
+                        active=True, portal_user__isnull=True)
+                user = form.save(commit=False)
+                user.is_staff = False
+                user.is_superuser = False
+                user.save()
+                Membership.objects.create(practice=practice, user=user, role=account_role)
+                if patient:
+                    patient.portal_user = user
+                    patient.save(update_fields=["portal_user", "updated_at"])
+                if form.cleaned_data["delivery"] == "invite":
+                    from securityguard.accounts import queue_invitation
+                    queue_invitation(user, practice)
+                record_audit_event(practice=practice, actor=request.user,
+                    action="account.created", object_type="user", object_id=user.pk,
+                    purpose=f"Create {account_role} account for practice", outcome="success")
+        except (IntegrityError, Patient.DoesNotExist, ImproperlyConfigured):
+            form.add_error(None, "The username or patient record is no longer available. Refresh and try again.")
+        else:
+            messages.success(request, f"{account_role.title()} account created. " + ("Invitation queued for delivery." if form.cleaned_data["delivery"] == "invite" else "Share the username and password privately with its owner."))
+            return redirect(f"/app/{ROLE_PATHS[role]}/?practice={practice.pk}#patients")
+    return render(request, "portal/form.html", {
+        "form": form, "practice": practice, "practices": practices,
+        "role": role, "workspace": ROLE_PATHS[role], "kind": "new_account",
+        "title": f"Add {account_role} account",
+    })
+
+
+@never_cache
+@login_required
+def accounts(request):
+    practice, role, practices = scope(request, ["owner", "reception"])
+    if not practice:
+        raise PermissionDenied()
+    members = Membership.objects.filter(practice=practice, role__in=["doctor", "patient"]).select_related("user").order_by("role", "user__username")
+    return render(request, "portal/accounts.html", {"title": "Manage accounts", "members": members,
+        "practice": practice, "practices": practices, "role": role, "workspace": ROLE_PATHS[role]})
+
+
+@never_cache
+@login_required
+@require_POST
+def account_action(request, pk, operation):
+    practice, role, practices = scope(request, ["owner", "reception"])
+    if not practice or operation not in ["disable", "enable", "invite"]:
+        raise PermissionDenied()
+    from securityguard.accounts import queue_invitation, mail_ready
+    from securityguard.models import AccountInvitation
+    with transaction.atomic():
+        Practice.objects.select_for_update().get(pk=practice.pk)
+        member = get_object_or_404(Membership.objects.select_for_update(), pk=pk,
+            practice=practice, role__in=["doctor", "patient"], user__is_superuser=False, user__is_staff=False)
+        if member.user_id == request.user.pk:
+            raise PermissionDenied("You cannot change your own access here.")
+        if operation == "invite":
+            from django.contrib.auth import get_user_model
+            duplicate_email = get_user_model().objects.filter(email__iexact=member.user.email).exclude(pk=member.user_id).exists()
+            if not member.active or not member.user.is_active or not mail_ready() or not member.user.email or duplicate_email:
+                messages.error(request, "Invitations require active access, a unique account-owner email and a configured email service.")
+                return redirect(f"/app/accounts/?practice={practice.pk}")
+            queue_invitation(member.user, practice)
+        else:
+            member.active = operation == "enable"
+            member.save(update_fields=["active"])
+            if operation == "disable":
+                AccountInvitation.objects.filter(user=member.user, practice=practice, accepted_at__isnull=True).update(expires_at=timezone.now())
+        record_audit_event(practice=practice, actor=request.user, action=f"account.{operation}",
+            object_type="membership", object_id=member.pk, purpose="Manage practice account access", outcome="success")
+    messages.success(request, "Invitation queued." if operation == "invite" else "Practice access updated.")
+    return redirect(f"/app/accounts/?practice={practice.pk}")
+
+
+@never_cache
+def privacy(request):
+    from django.conf import settings
+    return render(request, "portal/privacy.html", {"title": "Privacy and your information",
+        "operator": settings.PRACTICE_OPERATOR, "contact": settings.PRIVACY_CONTACT,
+        "retention": settings.RETENTION_NOTICE})
