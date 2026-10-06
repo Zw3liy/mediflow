@@ -85,7 +85,7 @@ def dashboard(request, workspace):
         appointments=appointments[:50], patient_count=patients.count(),
         next_patient=next_patient,
         next_patient_notified=Notification.objects.filter(appointment=next_patient, kind="doctor_ready").exists() if next_patient else False,
-        unread_count=Notification.objects.filter(practice=practice, recipient=request.user, read_at__isnull=True).count(),
+        unread_count=Notification.objects.filter(practice=practice, recipient=request.user, read_at__isnull=True, **({"appointment__patient__portal_user":request.user} if role == "patient" else {})).count(),
         appointment_count=appointments.filter(starts_at__date=timezone.localdate()).count(),
         pending_count=appointments.filter(status__in=["held", "confirmed", "arrived"], doctor_approved_at__isnull=True).count() if role == "doctor" else appointments.filter(status="requested").count(),
         prescriptions=prescriptions[:30] if role in ["doctor", "patient"] else [],
@@ -93,7 +93,7 @@ def dashboard(request, workspace):
         patients=patients.order_by("family_name")[:30] if role in ["owner", "reception"] else [],
         staff=Membership.objects.filter(practice=practice, active=True).select_related("user") if role == "owner" else [],
         services=Service.objects.filter(practice=practice),
-        notices=Notification.objects.filter(practice=practice, recipient=request.user).order_by("-created_at")[:8],
+        notices=Notification.objects.filter(practice=practice, recipient=request.user, **({"appointment__patient__portal_user":request.user} if role == "patient" else {})).order_by("-created_at")[:8],
         documents=PrescriptionDocument.objects.filter(practice=practice, prescription__encounter__patient__portal_user=request.user,
             scan_status="clean", released_to_patient_at__isnull=False) if role == "patient" else [],
     )
@@ -130,6 +130,11 @@ def form_view(request, kind):
                     record_audit_event(practice=practice, actor=request.user, action=f"{kind}.created", object_type=kind,
                         object_id=obj.pk, purpose=f"Create {kind}", outcome="success")
                 elif kind == "booking":
+                    if role == "patient":
+                        Practice.objects.select_for_update().get(pk=practice.pk)
+                        if not Patient.objects.filter(pk=form.cleaned_data["patient"].pk, practice=practice,
+                            portal_user=request.user, active=True).exists():
+                            raise PermissionDenied("This patient record is no longer linked to your account.")
                     book(practice=practice, **form.cleaned_data)
                 else:
                     values = form.cleaned_data.copy()
@@ -251,6 +256,8 @@ def notification_feed(request):
     if not practice:
         raise PermissionDenied()
     notices = Notification.objects.filter(practice=practice, recipient=request.user)
+    if role == "patient":
+        notices = notices.filter(appointment__patient__portal_user=request.user)
     next_visit = None
     if role == "doctor":
         visit = Appointment.objects.filter(practice=practice, practitioner=request.user,
@@ -273,7 +280,10 @@ def notification_feed(request):
 @require_POST
 def notification_read(request, pk):
     practice, role, practices = scope(request)
-    notice = get_object_or_404(Notification, pk=pk, practice=practice, recipient=request.user)
+    query = Notification.objects.filter(practice=practice, recipient=request.user)
+    if role == "patient":
+        query = query.filter(appointment__patient__portal_user=request.user)
+    notice = get_object_or_404(query, pk=pk)
     if notice.read_at is None:
         notice.read_at = timezone.now()
         notice.save(update_fields=["read_at"])
@@ -289,7 +299,15 @@ def patient_account(request, pk):
     if request.method == "POST" and form.is_valid():
         with transaction.atomic():
             Practice.objects.select_for_update().get(pk=practice.pk)
-            form.save()
+            patient = Patient.objects.select_for_update().get(pk=patient.pk, practice=practice)
+            patient.portal_user = form.cleaned_data["portal_user"]
+            patient.save(update_fields=["portal_user", "updated_at"])
+            from notifications.services import notify_doctor_ready
+            for visit in Appointment.objects.filter(patient=patient, practice=practice, doctor_approved_at__isnull=False,
+                status__in=["held", "confirmed", "arrived"], starts_at__gte=timezone.now()).select_related("patient", "practitioner", "practice"):
+                notify_doctor_ready(appointment=visit)
+                if visit.called_at and timezone.localtime(visit.called_at).date() == timezone.localdate():
+                    notify_doctor_ready(appointment=visit, ready_now=True)
             record_audit_event(practice=practice, actor=request.user, action="patient.app_account_linked",
                 object_type="patient", object_id=patient.pk, purpose="Link patient's own app account", outcome="success")
         messages.success(request, "Patient app account updated. Check that this account belongs to this patient.")

@@ -219,3 +219,32 @@ class ReceptionDoctorPatientTests(TestCase):
         response=api.post(f"/api/appointments/{self.appointment.pk}/doctor-approve/",{},format="json",**headers)
         self.assertEqual(response.status_code,200)
         self.assertIsNotNone(response.data["doctor_approved_at"])
+
+    def test_relinking_revokes_old_notification_access_and_delivers_pending_confirmation(self):
+        self.appointment.status="held"
+        self.appointment.save()
+        doctor_approve_booking(appointment_id=self.appointment.pk,practice=self.practice,actor=self.doctor)
+        old_notice=Notification.objects.get(recipient=self.patient_user,kind="doctor_ready")
+        replacement=get_user_model().objects.create_user(username="correct-patient-login")
+        Membership.objects.create(practice=self.practice,user=replacement,role="patient")
+        self.client.force_login(self.reception)
+        self.client.post(f"/app/patients/{self.patient.pk}/account/",{"practice":self.practice.pk,"portal_user":replacement.pk})
+        self.assertTrue(Notification.objects.filter(recipient=replacement,appointment=self.appointment,kind="doctor_ready").exists())
+        self.client.force_login(self.patient_user)
+        self.assertEqual(self.client.get("/app/notifications/").json()["notifications"],[])
+        self.assertNotContains(self.client.get("/app/patient/"),"Your doctor has approved your appointment")
+        self.assertEqual(self.client.post(f"/app/notifications/{old_notice.pk}/read/",{"practice":self.practice.pk}).status_code,404)
+        from rest_framework.test import APIClient
+        api=APIClient();api.force_authenticate(self.patient_user)
+        self.assertNotIn(str(old_notice.pk),str(api.get("/api/notifications/",HTTP_X_PRACTICE_ID=str(self.practice.pk)).data))
+
+    def test_late_patient_link_gets_confirmation_after_doctor_approval(self):
+        self.patient.portal_user=None
+        self.patient.save()
+        self.appointment.status="held"
+        self.appointment.save()
+        doctor_approve_booking(appointment_id=self.appointment.pk,practice=self.practice,actor=self.doctor)
+        self.assertFalse(Notification.objects.filter(kind="doctor_ready").exists())
+        self.client.force_login(self.reception)
+        self.client.post(f"/app/patients/{self.patient.pk}/account/",{"practice":self.practice.pk,"portal_user":self.patient_user.pk})
+        self.assertTrue(Notification.objects.filter(kind="doctor_ready",recipient=self.patient_user).exists())

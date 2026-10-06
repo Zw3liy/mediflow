@@ -336,11 +336,13 @@ def doctor_approve_booking(*, appointment_id, practice, actor, ready_now=False):
         if timezone.localtime(appointment.starts_at, ZoneInfo("Africa/Johannesburg")).date() != timezone.localdate(timezone=ZoneInfo("Africa/Johannesburg")):
             raise ValidationError("The Ready now alert is available only on the appointment day.")
         if appointment.called_at is not None:
+            notify_doctor_ready(appointment=appointment, ready_now=True)
             return appointment
         appointment.called_at = timezone.now()
         appointment.save(update_fields=["called_at"])
     else:
         if appointment.doctor_approved_at is not None:
+            notify_doctor_ready(appointment=appointment)
             return appointment
         appointment.doctor_approved_at = timezone.now()
         appointment.save(update_fields=["doctor_approved_at"])

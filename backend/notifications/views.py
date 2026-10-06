@@ -32,7 +32,7 @@ class NotificationViewSet(viewsets.ReadOnlyModelViewSet):
     def get_queryset(self):
         membership = self.get_membership()
 
-        return Notification.objects.filter(
+        queryset = Notification.objects.filter(
             practice=membership.practice,
             recipient=self.request.user,
         ).select_related(
@@ -40,6 +40,9 @@ class NotificationViewSet(viewsets.ReadOnlyModelViewSet):
             "recipient",
             "appointment",
         )
+        if membership.role == Membership.Role.PATIENT:
+            queryset = queryset.filter(appointment__patient__portal_user=self.request.user)
+        return queryset
 
     @action(
         detail=True,
