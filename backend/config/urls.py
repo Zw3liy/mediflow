@@ -1,9 +1,12 @@
 from django.contrib import admin
 from django.urls import include, path
+from django.views.generic import RedirectView
 from .health import live, ready
 
 
 urlpatterns = [
+    path("", RedirectView.as_view(url="/app/", permanent=False)),
+    path("app/", include("portal.urls")),
     path("health/live/", live, name="health-live"),
     path("health/ready/", ready, name="health-ready"),
     path("admin/", admin.site.urls),

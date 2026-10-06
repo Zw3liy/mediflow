@@ -236,6 +236,17 @@ jobs:
           test -s /tmp/admin-base.css
           test -s /tmp/admin-theme.js
 
+      - name: Verify portal login and styles
+        run: |
+          curl --fail --silent --show-error \
+            --output /tmp/portal-login.html \
+            http://127.0.0.1:8000/app/login/
+          curl --fail --silent --show-error \
+            --output /tmp/portal.css \
+            http://127.0.0.1:8000/static/portal/app.css
+          test -s /tmp/portal-login.html
+          test -s /tmp/portal.css
+
       - name: Show container logs on failure
         if: failure()
         run: |
