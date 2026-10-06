@@ -1,0 +1,10 @@
+services:
+  offsite-backup:
+    image: restic/restic:0.19.1
+    profiles: [offsite]
+    restart: unless-stopped
+    env_file: [.env.offsite]
+    volumes:
+      - ./backups:/backups
+      - ./ops:/ops:ro
+    entrypoint: [/bin/sh, /ops/offsite_backup.sh]

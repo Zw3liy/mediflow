@@ -1,8 +1,11 @@
 services:
   db:
     image: postgres:16-alpine
-    env_file:
-      - .env
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:?Set POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER:?Set POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
@@ -15,6 +18,9 @@ services:
 
   redis:
     image: redis:7-alpine
+    profiles:
+      - optional-storage
+    restart: unless-stopped
     command:
       - redis-server
       - --appendonly
@@ -24,13 +30,17 @@ services:
 
   minio:
     image: minio/minio:latest
+    profiles:
+      - optional-storage
+    restart: unless-stopped
     command:
       - server
       - /data
       - --console-address
       - ":9001"
-    env_file:
-      - .env
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:?Set MINIO_ROOT_USER}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?Set MINIO_ROOT_PASSWORD}
     volumes:
       - minio_data:/data
     ports:
@@ -44,6 +54,7 @@ services:
     env_file:
       - .env
     environment:
+      DJANGO_PRODUCTION: ${DJANGO_PRODUCTION:-True}
       POSTGRES_HOST: db
       POSTGRES_PORT: "5432"
       CLAMAV_HOST: clamav
@@ -52,7 +63,12 @@ services:
     command:
       - sh
       - -c
-      - python manage.py migrate && python manage.py collectstatic --noinput && gunicorn config.wsgi:application --bind 0.0.0.0:8000 --workers 2 --timeout 60
+      - case "$$DJANGO_PRODUCTION" in True|true|TRUE|1|yes|YES) python manage.py check_production || exit 1;; esac; python manage.py migrate && python manage.py collectstatic --noinput && gunicorn config.wsgi:application --bind 0.0.0.0:8000 --workers 2 --timeout 60 --limit-request-line 4094 --limit-request-fields 100 --limit-request-field_size 8190
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    init: true
     volumes:
       - private_documents:/app/private_documents
     ports:
@@ -101,9 +117,11 @@ services:
     image: postgres:16-alpine
     profiles:
       - operations
-    env_file:
-      - .env
     environment:
+      POSTGRES_DB: ${POSTGRES_DB:?Set POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER:?Set POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}
+      BACKUP_RETENTION_DAYS: ${BACKUP_RETENTION_DAYS:-30}
       POSTGRES_HOST: db
       POSTGRES_PORT: "5432"
     depends_on:
@@ -122,9 +140,12 @@ services:
     profiles:
       - automation
     restart: unless-stopped
-    env_file:
-      - .env
     environment:
+      POSTGRES_DB: ${POSTGRES_DB:?Set POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER:?Set POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}
+      BACKUP_RETENTION_DAYS: ${BACKUP_RETENTION_DAYS:-30}
+      BACKUP_INTERVAL_SECONDS: ${BACKUP_INTERVAL_SECONDS:-86400}
       POSTGRES_HOST: db
       POSTGRES_PORT: "5432"
     depends_on:
@@ -142,9 +163,11 @@ services:
     image: postgres:16-alpine
     profiles:
       - operations
-    env_file:
-      - .env
     environment:
+      POSTGRES_DB: ${POSTGRES_DB:?Set POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER:?Set POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}
+      BACKUP_ID: ${BACKUP_ID:-latest}
       POSTGRES_HOST: db
       POSTGRES_PORT: "5432"
     depends_on:
@@ -156,6 +179,102 @@ services:
     entrypoint:
       - /bin/sh
       - /ops/verify_restore.sh
+
+  maintenance:
+    build:
+      context: ./backend
+    profiles:
+      - automation
+    restart: unless-stopped
+    init: true
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    env_file:
+      - .env
+    environment:
+      DJANGO_PRODUCTION: ${DJANGO_PRODUCTION:-True}
+      POSTGRES_HOST: db
+      POSTGRES_PORT: "5432"
+    depends_on:
+      web:
+        condition: service_healthy
+    command:
+      - sh
+      - -c
+      - while true; do python manage.py clearsessions && python manage.py clear_login_attempts || exit 1; sleep 86400; done
+
+  document-scanner:
+    build:
+      context: ./backend
+    profiles:
+      - automation
+    restart: unless-stopped
+    init: true
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    env_file:
+      - .env
+    environment:
+      DJANGO_PRODUCTION: ${DJANGO_PRODUCTION:-True}
+      POSTGRES_HOST: db
+      POSTGRES_PORT: "5432"
+      CLAMAV_HOST: clamav
+      CLAMAV_PORT: "3310"
+      DOCUMENT_STORAGE_ROOT: /app/private_documents
+    volumes:
+      - private_documents:/app/private_documents
+    depends_on:
+      web:
+        condition: service_healthy
+      clamav:
+        condition: service_healthy
+    command:
+      - sh
+      - -c
+      - while true; do python manage.py scan_documents || exit 1; sleep 15; done
+
+  account-email:
+    build:
+      context: ./backend
+    profiles: [automation]
+    restart: unless-stopped
+    init: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    env_file: [.env]
+    environment:
+      DJANGO_PRODUCTION: ${DJANGO_PRODUCTION:-True}
+      POSTGRES_HOST: db
+      POSTGRES_PORT: "5432"
+    depends_on:
+      web:
+        condition: service_healthy
+    command: [sh, -c, 'while true; do python manage.py send_account_emails || exit 1; sleep 60; done']
+
+  operations-monitor:
+    build:
+      context: ./backend
+    profiles: [automation]
+    restart: unless-stopped
+    init: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    env_file: [.env]
+    environment:
+      DJANGO_PRODUCTION: ${DJANGO_PRODUCTION:-True}
+      POSTGRES_HOST: db
+      POSTGRES_PORT: "5432"
+      MEDIFLOW_BACKUP_ROOT: /backups
+    volumes:
+      - ./backups:/backups:ro
+    depends_on:
+      web:
+        condition: service_healthy
+    command: [sh, -c, 'while true; do python manage.py check_operations --alert; sleep 300; done']
 
 volumes:
   postgres_data:

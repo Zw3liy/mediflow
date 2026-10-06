@@ -5,6 +5,12 @@ from uuid import UUID
 from datetime import timedelta
 from zoneinfo import ZoneInfo
 from django.contrib.auth import authenticate, get_user_model
+from django.conf import settings
+from django_otp import verify_token
+from django_otp.plugins.otp_totp.models import TOTPDevice
+from securityguard.middleware import bucket_key
+from securityguard.models import LoginAttemptBucket, RecoveryCode
+from securityguard.views import recovery_digest
 from django.core.exceptions import ValidationError as DjangoValidationError
 from django.db import transaction, IntegrityError
 from django.shortcuts import get_object_or_404
@@ -26,7 +32,7 @@ from scheduling.models import Appointment, Service
 from scheduling.services import book, approve_booking, reject_booking, doctor_approve_booking, record_intake, complete_consultation
 from tenancy.models import Practice, Membership
 from portal.forms import IntakeForm, PatientForm
-from .authentication import MobileTokenAuthentication, WORKSPACES
+from .authentication import MobileTokenAuthentication, WORKSPACES, privileged_user
 from .models import MobileSession, PushDevice
 
 SAST = ZoneInfo("Africa/Johannesburg")
@@ -93,6 +99,23 @@ class MobileLogin(MobileBase):
         password=request.data.get("password", "")
         if not isinstance(workspace,str) or workspace not in WORKSPACES or not isinstance(username,str) or not isinstance(password,str) or len(username)>150 or not password or len(password)>1024:
             raise ValidationError("Choose your sign-in area and enter your username and password.")
+        # Persistent account and direct-peer limits apply before password hashing.
+        account = bucket_key("account", username.strip().casefold()[:256])
+        address = bucket_key("address", request.META.get("REMOTE_ADDR", "unknown"))
+        now = timezone.now()
+        with transaction.atomic():
+            buckets = []
+            for key, limit in sorted([(account, settings.LOGIN_ACCOUNT_LIMIT), (address, settings.LOGIN_ADDRESS_LIMIT)]):
+                bucket, _ = LoginAttemptBucket.objects.get_or_create(key=key, defaults={"started_at": now})
+                bucket = LoginAttemptBucket.objects.select_for_update().get(pk=bucket.pk)
+                if now - bucket.started_at >= timedelta(seconds=settings.LOGIN_ATTEMPT_WINDOW):
+                    bucket.started_at, bucket.attempts = now, 0
+                buckets.append((bucket, limit))
+            if any(bucket.attempts >= limit for bucket, limit in buckets):
+                return Response({"detail": "Too many sign-in attempts. Try again later."}, status=429)
+            for bucket, _ in buckets:
+                bucket.attempts += 1
+                bucket.save(update_fields=["started_at", "attempts"])
         user=authenticate(request,username=username,password=password)
         if user is None or not user.is_active:
             raise AuthenticationFailed("Unable to sign in. Check your account and sign-in area.")
@@ -113,9 +136,29 @@ class MobileLogin(MobileBase):
             practice,role=member.practice,member.role
         if practice is None:
             raise AuthenticationFailed("An active practice membership is required.")
+        device = None
+        privileged = privileged_user(user)
+        if settings.ADMIN_MFA_REQUIRED and privileged:
+            device = TOTPDevice.objects.filter(user=user, confirmed=True).first()
+            if device is None:
+                raise AuthenticationFailed("Set up your administrator authenticator in the web app before mobile sign-in.")
+            code = request.data.get("code", "")
+            if not isinstance(code, str) or not code or len(code) > 32:
+                raise AuthenticationFailed("Enter your authenticator or unused recovery code.")
+            valid = verify_token(user, device.persistent_id, code.strip())
+            if not valid:
+                with transaction.atomic():
+                    recovery = RecoveryCode.objects.select_for_update().filter(user=user, digest=recovery_digest(code)).first()
+                    if recovery:
+                        recovery.delete()
+                        valid = device
+            if not valid:
+                raise AuthenticationFailed("Invalid or already used authenticator code.")
+        LoginAttemptBucket.objects.filter(key=account).delete()
         token=secrets.token_urlsafe(48)
         session=MobileSession.objects.create(user=user,practice=practice,workspace=workspace,
-            token_hash=hashlib.sha256(token.encode()).hexdigest(),expires_at=timezone.now()+timedelta(days=7))
+            token_hash=hashlib.sha256(token.encode()).hexdigest(), password_hash=user.get_session_auth_hash(),
+            mfa_device=device, expires_at=timezone.now()+(timedelta(seconds=settings.SESSION_ABSOLUTE_TIMEOUT) if privileged else timedelta(days=7)))
         record_audit_event(practice=practice,actor=user,action="mobile.signed_in",object_type="mobile_session",
             object_id=session.pk,purpose="Sign in to mobile workspace",outcome="success")
         return Response({"token":token,"session":session_info(session,role)})

@@ -7,7 +7,7 @@ from django.db.models import Q
 from django.utils import timezone
 from tenancy.models import Membership
 from .models import PushDelivery
-from .authentication import WORKSPACES
+from .authentication import WORKSPACES, session_security_valid
 
 
 def dispatch_pushes(limit=50):
@@ -26,7 +26,7 @@ def dispatch_pushes(limit=50):
             notice=delivery.notification
             membership=Membership.objects.filter(user=session.user,practice=session.practice,active=True,
                 role__in=WORKSPACES.get(session.workspace, [])).first()
-            valid=device.active and session.user.is_active and session.practice.active and not session.revoked_at and session.expires_at>timezone.now() and membership is not None and notice.recipient_id==session.user_id and notice.practice_id==session.practice_id
+            valid=session_security_valid(session) and device.active and session.user.is_active and session.practice.active and not session.revoked_at and session.expires_at>timezone.now() and membership is not None and notice.recipient_id==session.user_id and notice.practice_id==session.practice_id
             if valid and membership.role=="patient": valid=notice.appointment.patient.portal_user_id==session.user_id
             if not valid:
                 delivery.status="cancelled";delivery.save(update_fields=["status"]);continue

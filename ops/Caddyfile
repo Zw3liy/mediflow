@@ -1,0 +1,8 @@
+{$MEDIFLOW_DOMAIN} {
+    # Caddy derives the trusted scheme itself; client values cannot override it.
+    reverse_proxy web:8000 {
+        header_up X-Forwarded-Proto {scheme}
+        header_up -X-Forwarded-Host
+    }
+    # Do not log patient paths, query strings, invitation tokens or cookies.
+}

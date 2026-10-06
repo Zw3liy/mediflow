@@ -3,6 +3,8 @@ from django.db import models
 
 
 class MobileSession(models.Model):
+    password_hash = models.CharField(max_length=128, blank=True)
+    mfa_device = models.ForeignKey("otp_totp.TOTPDevice", null=True, blank=True, on_delete=models.SET_NULL)
     token_hash = models.CharField(max_length=64, unique=True)
     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
     practice = models.ForeignKey("tenancy.Practice", on_delete=models.PROTECT)

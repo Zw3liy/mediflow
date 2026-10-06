@@ -184,3 +184,59 @@ class NativeMobileTests(TestCase):
         self.assertEqual(response.status_code,400)
         self.appointment.refresh_from_db()
         self.assertEqual(self.appointment.status,'requested')
+
+    def test_password_change_invalidates_mobile_session(self):
+        self.login()
+        self.patient_user.set_password('replacement-password')
+        self.patient_user.save()
+        self.assertEqual(self.api.get('/api/mobile/dashboard/').status_code,401)
+
+    @override_settings(ADMIN_MFA_REQUIRED=True)
+    def test_admin_cannot_bypass_mfa_using_mobile_login(self):
+        values={'username':'reception','password':'test-password','workspace':'reception'}
+        self.assertEqual(self.api.post('/api/mobile/login/',values,format='json').status_code,401)
+        self.assertFalse(MobileSession.objects.exists())
+
+    @override_settings(ADMIN_MFA_REQUIRED=True)
+    def test_admin_recovery_code_is_single_use_and_device_removal_revokes_session(self):
+        from django_otp.plugins.otp_totp.models import TOTPDevice
+        from securityguard.models import RecoveryCode
+        from securityguard.views import recovery_digest
+        device=TOTPDevice.objects.create(user=self.reception,name='Primary',confirmed=True)
+        RecoveryCode.objects.create(user=self.reception,digest=recovery_digest('ABCDEF1234567890'))
+        values={'username':'reception','password':'test-password','workspace':'reception','code':'ABCDEF1234567890'}
+        response=self.api.post('/api/mobile/login/',values,format='json')
+        self.assertEqual(response.status_code,200,response.data)
+        self.assertFalse(RecoveryCode.objects.exists())
+        self.assertEqual(self.api.post('/api/mobile/login/',values,format='json').status_code,401)
+        self.api.credentials(HTTP_AUTHORIZATION='Bearer '+response.data['token'])
+        self.assertEqual(self.api.get('/api/mobile/dashboard/').status_code,200)
+        device.delete()
+        self.assertEqual(self.api.get('/api/mobile/dashboard/').status_code,401)
+
+    @override_settings(ADMIN_MFA_REQUIRED=True)
+    def test_privileged_account_requires_mfa_even_in_patient_workspace(self):
+        Membership.objects.create(user=self.patient_user,practice=self.other,role='reception',active=True)
+        response=self.api.post('/api/mobile/login/',{'username':'patient','password':'test-password','workspace':'patient'},format='json')
+        self.assertEqual(response.status_code,401)
+        self.assertFalse(MobileSession.objects.exists())
+
+    def test_mobile_account_limit_persists_after_cache_reset(self):
+        values={'username':'patient','password':'wrong-password','workspace':'patient'}
+        for _ in range(5):
+            cache.clear()
+            self.assertEqual(self.api.post('/api/mobile/login/',values,format='json').status_code,401)
+        cache.clear()
+        self.assertEqual(self.api.post('/api/mobile/login/',values,format='json').status_code,429)
+
+    @override_settings(MOBILE_PUSH_ENABLED=True,EXPO_ACCESS_TOKEN='test-provider-token')
+    @patch('mobile_api.push.urlopen')
+    def test_password_change_cancels_pending_push(self, provider):
+        self.login()
+        self.api.post('/api/mobile/devices/',{'token':'ExpoPushToken[test_token_1234567890]','platform':'android'},format='json')
+        self.appointment.status='held';self.appointment.save()
+        doctor_approve_booking(appointment_id=self.appointment.pk,practice=self.practice,actor=self.doctor)
+        self.patient_user.set_password('replacement-password');self.patient_user.save()
+        dispatch_pushes()
+        self.assertEqual(PushDelivery.objects.get().status,'cancelled')
+        provider.assert_not_called()

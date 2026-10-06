@@ -57,3 +57,19 @@ Sessions expire after seven days. Only a random bearer token is stored in the pl
 ## Dependency review
 
 The lockfile overrides the navigation dependency `decode-uri-component` to patched 0.5.0 (GHSA-vcc3-ghjq-m6fr). Its upstream algorithm is vendored with only its export converted to CommonJS, because SDK 57 Router's `query-string` dependency requires that format. The MIT license is preserved, and regression tests verify query decoding and malformed input. Replace the vendor adaptation when upgrading to a compatible patched Router release. The Expo/Metro build toolchain still reports unpatched `braces` (GHSA-vfj7-8cjw-p6xm) and `node-forge` (GHSA-86w9-cpqp-85rv) advisories, plus the older `uuid` dependency in Xcode project generation (GHSA-w5hq-g745-h8pq). These tools are not imported by application screens; only trusted repository patterns and generated build configuration are used. No OTA update/signature verification feature is enabled. Keep Metro/build tooling private and review upstream patches before production signing; this project does not claim a clean npm audit.
+
+
+## Production web security compatibility
+
+Merge the mobile API with the current web release before deployment. Administrator
+accounts (including anyone with an active owner/reception membership in another
+practice) must first enroll an authenticator in the web app. Mobile login accepts
+an authenticator code or one unused recovery code. Administrator mobile sessions
+expire after the configured absolute session timeout. Password changes/resets,
+account deactivation, membership removal, and administrator authenticator removal
+invalidate mobile access; queued push delivery also rechecks session security.
+Existing mobile sessions created before this security upgrade require a new login.
+
+The default appointment notification channel requests the device's default sound.
+The user controls channel sound, notification permission, silent mode and Do Not
+Disturb. An Expo ticket confirms provider acceptance, not delivery to a phone.
