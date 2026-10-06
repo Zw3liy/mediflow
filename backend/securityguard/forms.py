@@ -11,7 +11,13 @@ class CodeForm(forms.Form):
 
 
 class MFACodeForm(CodeForm):
-    password = forms.CharField(label='Current password', widget=forms.PasswordInput)
+    code = forms.RegexField(
+        regex=r'^[0-9]{6}$', label='Six-digit code from your authenticator app',
+        max_length=6, min_length=6,
+        help_text='Open the MediFlow entry in your authenticator app and enter its current six-digit number. Do not enter your username or the setup key.',
+        widget=forms.TextInput(attrs={'autocomplete': 'one-time-code', 'inputmode': 'numeric', 'pattern': '[0-9]{6}', 'placeholder': '123456'}))
+    password = forms.CharField(label='Current MediFlow password',
+        widget=forms.PasswordInput(attrs={'autocomplete': 'current-password'}))
 
 
 class QueuedPasswordResetForm(PasswordResetForm):
