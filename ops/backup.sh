@@ -1,7 +1,11 @@
 #!/bin/sh
 set -eu
+umask 077
 
 timestamp="$(date -u +%Y%m%dT%H%M%SZ)"
+case "${BACKUP_RETENTION_DAYS:-30}" in
+    ''|*[!0-9]*) printf 'Invalid backup retention.\n' >&2; exit 1 ;;
+esac
 backup_dir="/backups/$timestamp"
 temporary_dir="/backups/.${timestamp}.tmp"
 

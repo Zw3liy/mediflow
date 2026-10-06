@@ -89,7 +89,18 @@ jobs:
         env:
           DJANGO_SECURE_SSL_REDIRECT: "True"
           DJANGO_SECURE_HSTS_SECONDS: "31536000"
-        run: python manage.py check --deploy
+          DJANGO_SECRET_KEY: "ci-validation-0123456789-abcdefghijklmnopqrstuvwxyz-ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+        run: python manage.py check --deploy --fail-level WARNING
+
+      - name: Verify strict production startup configuration
+        env:
+          DJANGO_PRODUCTION: "True"
+          DJANGO_ALLOWED_HOSTS: localhost,127.0.0.1,mediflow.invalid
+          DJANGO_SECRET_KEY: "ci-validation-0123456789-abcdefghijklmnopqrstuvwxyz-ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+          POSTGRES_PASSWORD: "ci-probe-0123456789-abcdefghijklmnopqrstuvwxyz"
+          DJANGO_SECURE_SSL_REDIRECT: "True"
+          DJANGO_SECURE_HSTS_SECONDS: "300"
+        run: python manage.py check_production
 
   security:
     name: Dependency and secret security
@@ -149,6 +160,7 @@ jobs:
           POSTGRES_CONN_MAX_AGE=60
           DJANGO_SECRET_KEY=ci-only-docker-secret
           DJANGO_DEBUG=False
+          DJANGO_PRODUCTION=False
           DJANGO_ALLOWED_HOSTS=localhost,127.0.0.1
           DJANGO_CSRF_TRUSTED_ORIGINS=
           DJANGO_SECURE_SSL_REDIRECT=False

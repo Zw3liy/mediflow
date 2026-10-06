@@ -70,6 +70,7 @@ createdb \
     "$temporary_database"
 
 pg_restore \
+    --exit-on-error \
     --host="${POSTGRES_HOST:-db}" \
     --port="${POSTGRES_PORT:-5432}" \
     --username="${POSTGRES_USER}" \
