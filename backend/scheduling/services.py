@@ -9,6 +9,7 @@ from auditlog.services import record_audit_event
 from notifications.services import (
     notify_appointment_approved,
     notify_appointment_rejected,
+    doctor_intake_message,
 )
 
 from .models import Appointment
@@ -30,6 +31,7 @@ def book(
     practitioner,
     service,
     starts_at,
+    reason_for_visit="",
 ):
     # Lock an existing row even when the appointment slot is empty.
     Practice.objects.select_for_update().get(pk=practice.pk)
@@ -94,6 +96,7 @@ def book(
         ends_at=ends_at,
         status=Appointment.Status.REQUESTED,
         hold_expires_at=None,
+        reason_for_visit=reason_for_visit,
     )
 
 
@@ -306,7 +309,103 @@ def update_booking(*, appointment_id, practice, actor, changes):
     appointment.service = service
     appointment.starts_at = starts_at
     appointment.ends_at = ends_at
+    appointment.reason_for_visit = changes.get("reason_for_visit", appointment.reason_for_visit)
     appointment.save(update_fields=[
-        "patient", "practitioner", "service", "starts_at", "ends_at",
+        "patient", "practitioner", "service", "starts_at", "ends_at", "reason_for_visit",
     ])
+    return appointment
+
+
+@transaction.atomic
+def doctor_approve_booking(*, appointment_id, practice, actor, ready_now=False):
+    from notifications.services import notify_doctor_ready
+    from zoneinfo import ZoneInfo
+    Practice.objects.select_for_update().get(pk=practice.pk)
+    appointment = Appointment.objects.select_for_update().select_related("patient", "practitioner", "practice").get(pk=appointment_id, practice=practice)
+    if not Membership.objects.filter(practice=practice, user=actor, active=True, user__is_active=True, role="doctor").exists() or appointment.practitioner_id != actor.pk:
+        raise ValidationError("Only the assigned active doctor can approve this appointment.")
+    if appointment.status not in ["held", "confirmed", "arrived"]:
+        raise ValidationError("Reception must approve this request before the doctor can confirm it.")
+    if ready_now:
+        if appointment.doctor_approved_at is None:
+            raise ValidationError("Approve this appointment before calling the patient.")
+        next_appointment = Appointment.objects.filter(practice=practice, practitioner=actor,
+            status__in=["held", "confirmed", "arrived"], starts_at__date__gte=timezone.localdate()).order_by("starts_at", "pk").first()
+        if next_appointment is None or next_appointment.pk != appointment.pk:
+            raise ValidationError("Call the next patient in appointment order first.")
+        if timezone.localtime(appointment.starts_at, ZoneInfo("Africa/Johannesburg")).date() != timezone.localdate(timezone=ZoneInfo("Africa/Johannesburg")):
+            raise ValidationError("The Ready now alert is available only on the appointment day.")
+        if appointment.called_at is not None:
+            notify_doctor_ready(appointment=appointment, ready_now=True)
+            return appointment
+        appointment.called_at = timezone.now()
+        appointment.save(update_fields=["called_at"])
+    else:
+        if appointment.doctor_approved_at is not None:
+            notify_doctor_ready(appointment=appointment)
+            return appointment
+        appointment.doctor_approved_at = timezone.now()
+        appointment.save(update_fields=["doctor_approved_at"])
+    notify_doctor_ready(appointment=appointment, ready_now=ready_now)
+    record_audit_event(practice=practice, actor=actor,
+        action="appointment.patient_called" if ready_now else "appointment.doctor_approved",
+        object_type="appointment", object_id=appointment.pk, purpose="Notify patient of doctor readiness", outcome="success")
+    return appointment
+
+
+@transaction.atomic
+def record_intake(*, appointment_id, practice, actor, values):
+    Practice.objects.select_for_update().get(pk=practice.pk)
+    if not Membership.objects.filter(practice=practice, user=actor, active=True,
+        role__in=["owner", "reception", "nurse"]).exists():
+        raise ValidationError("Only active reception, owner or nurse staff can record intake.")
+    appointment = Appointment.objects.select_for_update().get(pk=appointment_id, practice=practice)
+    if appointment.status not in ["requested", "held", "confirmed", "arrived"] or appointment.doctor_approved_at:
+        raise ValidationError("Record intake before doctor approval. Completed records cannot be changed here.")
+    systolic = values.get("blood_pressure_systolic")
+    diastolic = values.get("blood_pressure_diastolic")
+    reason = values.get("reason_for_visit", "").strip()
+    if (systolic is None) != (diastolic is None) or (systolic is not None and
+        (not isinstance(systolic, int) or not isinstance(diastolic, int) or not 1 <= systolic <= 350 or not 1 <= diastolic <= 250)) or len(reason) > 2000:
+        raise ValidationError("Check the symptoms and blood pressure values. Enter both readings or neither.")
+    changed_bp = (systolic, diastolic) != (appointment.blood_pressure_systolic, appointment.blood_pressure_diastolic)
+    appointment.reason_for_visit = reason
+    appointment.blood_pressure_systolic = systolic
+    appointment.blood_pressure_diastolic = diastolic
+    if changed_bp:
+        appointment.blood_pressure_recorded_at = timezone.now() if systolic is not None else None
+        appointment.blood_pressure_recorded_by = actor if systolic is not None else None
+    appointment.save(update_fields=["reason_for_visit", "blood_pressure_systolic", "blood_pressure_diastolic", "blood_pressure_recorded_at", "blood_pressure_recorded_by"])
+    if appointment.status != "requested":
+        from notifications.models import Notification
+        notification = notify_appointment_approved(appointment=appointment)
+        notification.message = doctor_intake_message(appointment)
+        notification.read_at = None
+        notification.save(update_fields=["message", "read_at"])
+    record_audit_event(practice=practice, actor=actor, action="appointment.intake_recorded",
+        object_type="appointment", object_id=appointment.pk, purpose="Record patient-reported symptoms and measured blood pressure", outcome="success")
+    return appointment
+
+
+@transaction.atomic
+def complete_consultation(*, appointment_id, practice, actor):
+    from clinical.models import Encounter
+    Practice.objects.select_for_update().get(pk=practice.pk)
+    appointment = Appointment.objects.select_for_update().get(pk=appointment_id, practice=practice)
+    if appointment.practitioner_id != actor.pk or not Membership.objects.filter(
+        practice=practice, user=actor, active=True, role="doctor").exists():
+        raise ValidationError("Only the assigned doctor can complete a consultation.")
+    encounter = Encounter.objects.select_for_update().filter(appointment=appointment, practitioner=actor).first()
+    if encounter is None or appointment.doctor_approved_at is None:
+        raise ValidationError("Open an approved consultation before completing it.")
+    if appointment.status == "completed":
+        return appointment
+    if appointment.status not in ["held", "confirmed", "arrived"]:
+        raise ValidationError("This consultation cannot be completed.")
+    encounter.ended_at = timezone.now()
+    encounter.save(update_fields=["ended_at"])
+    appointment.status = "completed"
+    appointment.save(update_fields=["status"])
+    record_audit_event(practice=practice, actor=actor, action="appointment.consultation_completed",
+        object_type="appointment", object_id=appointment.pk, purpose="Complete consultation and advance queue", outcome="success")
     return appointment

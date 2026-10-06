@@ -66,3 +66,11 @@ class Appointment(models.Model):
         blank=True,
         default="",
     )
+    reason_for_visit = models.TextField(blank=True, default="")
+    blood_pressure_systolic = models.PositiveSmallIntegerField(null=True, blank=True)
+    blood_pressure_diastolic = models.PositiveSmallIntegerField(null=True, blank=True)
+    blood_pressure_recorded_at = models.DateTimeField(null=True, blank=True)
+    blood_pressure_recorded_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True,
+        on_delete=models.PROTECT, related_name="recorded_appointment_vitals")
+    doctor_approved_at = models.DateTimeField(null=True, blank=True)
+    called_at = models.DateTimeField(null=True, blank=True)

@@ -15,6 +15,8 @@ class Notification(models.Model):
             "appointment_rejected",
             "Appointment rejected",
         )
+        DOCTOR_READY = "doctor_ready", "Doctor approved appointment"
+        PATIENT_CALLED = "patient_called", "Doctor ready now"
         APPOINTMENT_REMINDER = (
             "appointment_reminder",
             "Appointment reminder",

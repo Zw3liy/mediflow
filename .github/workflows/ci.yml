@@ -246,6 +246,14 @@ jobs:
             http://127.0.0.1:8000/static/portal/app.css
           test -s /tmp/portal-login.html
           test -s /tmp/portal.css
+          for area in reception doctor patient; do
+            curl --fail --silent --show-error --output "/tmp/login-$area.html" \
+              "http://127.0.0.1:8000/app/login/$area/"
+            test -s "/tmp/login-$area.html"
+          done
+          curl --fail --silent --show-error --output /tmp/portal.js \
+            http://127.0.0.1:8000/static/portal/app.js
+          test -s /tmp/portal.js
 
       - name: Show container logs on failure
         if: failure()

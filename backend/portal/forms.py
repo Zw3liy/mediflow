@@ -2,15 +2,23 @@ from django import forms
 from django.contrib.auth import get_user_model
 from clinical.models import Encounter
 from patients.models import Patient
-from scheduling.models import Service
+from scheduling.models import Appointment, Service
 from tenancy.models import Membership
 
 
 class PatientForm(forms.ModelForm):
     class Meta:
         model = Patient
-        fields = ["file_number", "given_name", "family_name", "date_of_birth", "mobile", "email"]
+        fields = ["file_number", "given_name", "family_name", "date_of_birth", "mobile", "email", "portal_user"]
         widgets = {"date_of_birth": forms.DateInput(attrs={"type": "date"})}
+
+    def __init__(self, *args, practice, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields["portal_user"].queryset = get_user_model().objects.filter(is_active=True,
+            membership__practice=practice, membership__active=True, membership__role="patient").distinct()
+        self.fields["portal_user"].label = "Patient app account (optional)"
+        self.fields["portal_user"].help_text = "Choose this patient's own account to enable personal notifications."
+
 
 
 class ServiceForm(forms.ModelForm):
@@ -29,11 +37,16 @@ class BookingForm(forms.Form):
     patient = forms.ModelChoiceField(queryset=Patient.objects.none())
     practitioner = forms.ModelChoiceField(queryset=get_user_model().objects.none())
     service = forms.ModelChoiceField(queryset=Service.objects.none())
-    starts_at = forms.DateTimeField(label="Appointment time (UTC)", widget=forms.DateTimeInput(attrs={"type": "datetime-local"}))
+    starts_at = forms.DateTimeField(label="Appointment time (South Africa / SAST)", widget=forms.DateTimeInput(attrs={"type": "datetime-local"}))
+
+    reason_for_visit = forms.CharField(label="Reported symptoms / reason for visit", required=False, max_length=2000, widget=forms.Textarea(attrs={"rows": 3}))
 
     def __init__(self, *args, practice, user, role, **kwargs):
         super().__init__(*args, **kwargs)
         self.fields["patient"].queryset = Patient.objects.filter(practice=practice, active=True).order_by("family_name")
+        if role == "patient":
+            self.fields["patient"].queryset = self.fields["patient"].queryset.filter(portal_user=user)
+            self.fields["reason_for_visit"].required = True
         users = get_user_model().objects.filter(membership__practice=practice, membership__active=True,
             membership__role__in=[Membership.Role.DOCTOR, Membership.Role.NURSE], is_active=True)
         if role in [Membership.Role.DOCTOR, Membership.Role.NURSE]:
@@ -56,3 +69,27 @@ class PrescriptionForm(forms.Form):
         super().__init__(*args, **kwargs)
         self.fields["encounter"].queryset = Encounter.objects.filter(practice=practice, practitioner=user).select_related("patient")
         self.fields["encounter"].label_from_instance = lambda e: f"{e.patient.given_name} {e.patient.family_name} · {e.started_at:%d %b %Y}"
+
+
+class IntakeForm(forms.ModelForm):
+    reason_for_visit = forms.CharField(label="Reported symptoms / reason for visit", max_length=2000, required=False, widget=forms.Textarea(attrs={"rows":3}))
+    blood_pressure_systolic = forms.IntegerField(label="Blood pressure: systolic (mmHg)", min_value=1, max_value=350, required=False)
+    blood_pressure_diastolic = forms.IntegerField(label="Blood pressure: diastolic (mmHg)", min_value=1, max_value=250, required=False)
+
+    class Meta:
+        model = Appointment
+        fields = ["reason_for_visit", "blood_pressure_systolic", "blood_pressure_diastolic"]
+        labels = {"reason_for_visit": "Reported symptoms / reason for visit"}
+        widgets = {"reason_for_visit": forms.Textarea(attrs={"rows": 3})}
+
+    def clean(self):
+        values = super().clean()
+        systolic, diastolic = values.get("blood_pressure_systolic"), values.get("blood_pressure_diastolic")
+        if (systolic is None) != (diastolic is None):
+            raise forms.ValidationError("Enter both blood pressure readings, or leave both blank if not yet measured.")
+        return values
+
+
+class PatientAccountForm(PatientForm):
+    class Meta(PatientForm.Meta):
+        fields = ["portal_user"]

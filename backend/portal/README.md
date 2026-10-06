@@ -1,19 +1,37 @@
-# MediFlow role workspaces
+# Reception, doctor and patient workflow
 
-Open `/app/` and sign in with an existing Django user account. An active practice
-membership selects the Admin (Owner), Doctor, Reception, or Patient workspace.
-Superusers can select any active practice; appointment approval still requires
-an active Owner or Reception membership in that practice.
+Open `/app/login/` and choose Reception / secretary, Doctor, or Patient. The
+separate forms authenticate existing Django accounts and require the appropriate
+active membership in an active practice. Superusers use Reception sign in and
+retain access to practice administration. Roles are enforced on every action.
 
-- Admin: view practice activity and team, add patients and consultation services.
-- Reception: add patients, request appointments, approve or reject requests.
-- Doctor: request appointments, open approved consultations, create prescription
-  drafts, and confirm review before issuing prescriptions.
-- Patient: view their own appointments and issued prescriptions; download only
-  their own clean, released documents.
+1. Patient or staff requests a future appointment. Patients can select only their
+   own linked records, and describe their reported symptoms.
+2. Reception records symptoms and optional measured blood pressure, then approves
+   the request. The assigned doctor receives a private notification with the
+   patient name, scheduled time, reported symptoms and recorded BP.
+3. The assigned doctor approves the appointment. The linked patient receives a
+   personal notification with their name, doctor, practice and scheduled time.
+4. On the appointment day the doctor can send a Ready now alert to the next
+   patient in time order. After opening and completing that consultation, the
+   next patient advances in the queue. Repeated approval/call requests do not
+   duplicate notifications.
 
-Link a patient record's `portal_user` to its login account and give that account
-an active Patient membership to enable its patient workspace. Clinic records are
-scoped to the selected practice. All appointment input and display times use UTC.
-The responsive portal uses the same server on desktop and mobile browsers.
-Rebuild the Compose web image to install portal code and styles.
+Portal times use South Africa / SAST (Africa/Johannesburg); timestamps remain
+stored in UTC. Doctor approval is a separate clinical-readiness timestamp and
+preserves the existing payment and appointment status workflow.
+
+Notifications refresh every 15 seconds while the app is open, and refresh when
+returning to the tab. They remain in the patient's personal inbox when reopening
+the app. This implements in-app notifications, not operating-system push alerts,
+SMS or email delivery when the app is closed.
+
+Create a patient login in Django administration, add its active Patient practice
+membership, then use Patient directory → Link app account for the matching patient
+record. Existing users and memberships are preserved. Link only the patient's own
+account. Staff accounts use the Reception or Doctor membership roles.
+
+BP must include both readings or neither. A blank reading means Not yet measured.
+The app records the staff member and measurement-entry time; it does not diagnose
+or interpret readings. Intake cannot be changed through this screen after doctor
+approval. Rebuild the Compose web image; startup applies the included migrations.
