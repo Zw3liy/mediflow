@@ -177,3 +177,10 @@ class NativeMobileTests(TestCase):
         self.assertEqual(self.api.post(url,{'reviewed':True},format='json').status_code,200)
         self.api.credentials();self.login()
         self.assertEqual(self.api.get('/api/mobile/dashboard/').data['prescriptions'][0]['id'],created.data['id'])
+
+    def test_rejection_reason_must_be_text(self):
+        self.login('reception','reception')
+        response=self.api.post(f'/api/mobile/appointments/{self.appointment.pk}/reject/',{'reason':{}},format='json')
+        self.assertEqual(response.status_code,400)
+        self.appointment.refresh_from_db()
+        self.assertEqual(self.appointment.status,'requested')

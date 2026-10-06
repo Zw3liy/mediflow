@@ -190,7 +190,10 @@ class MobileAppointmentAction(MobileBase):
                 if operation in ["approve","reject","intake"]:
                     self.roles(request,["owner","reception"])
                     if operation=="approve":approve_booking(appointment_id=pk,practice=practice,actor=request.user)
-                    elif operation=="reject":reject_booking(appointment_id=pk,practice=practice,actor=request.user,reason=request.data.get("reason", ""))
+                    elif operation=="reject":
+                        reason=request.data.get("reason", "")
+                        if not isinstance(reason,str) or len(reason)>2000:raise ValidationError("Enter a rejection reason of up to 2000 characters.")
+                        reject_booking(appointment_id=pk,practice=practice,actor=request.user,reason=reason)
                     else:
                         form=IntakeForm(request.data,instance=visit)
                         if not form.is_valid():raise ValidationError(form.errors.get_json_data())
