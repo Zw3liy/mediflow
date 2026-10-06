@@ -1,0 +1,9 @@
+export type Workspace='reception'|'doctor'|'patient';
+export type SessionInfo={user:string;role:string;workspace:Workspace;practice:{id:string;name:string};expires_at:string};
+export type Session={token:string;baseUrl:string;session:SessionInfo};
+export type Appointment={id:number;patient:string;file_number:string;doctor:string;service:string;time:string;starts_at:string;status:string;symptoms:string;bp:string;doctor_approved:boolean;called:boolean;can_call:boolean;blood_pressure_systolic:number|null;blood_pressure_diastolic:number|null;has_consultation:boolean;patient_app_linked:boolean};
+export type Notice={id:number;title:string;message:string;read_at:string|null;created_at:string};
+export type Prescription={id:number;patient:string;status:string;general_instructions:string;items:{id:number;medication_name:string;dosage:string;frequency:string;duration:string}[]};
+export type Dashboard={session:SessionInfo;appointments:Appointment[];next_patient:Appointment|null;today_count:number;unread:number;notifications:Notice[];prescriptions:Prescription[];encounters:Choice[]};
+export type Choice={id:string|number;name:string};
+export type BookingOptions={patients:Choice[];doctors:Choice[];services:(Choice&{duration:number})[]};

@@ -1,0 +1,56 @@
+name: Android installable preview
+
+on:
+  pull_request:
+    paths:
+      - "mobile/**"
+      - ".github/workflows/android-preview.yml"
+  push:
+    branches: [main]
+    paths:
+      - "mobile/**"
+      - ".github/workflows/android-preview.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: mediflow-android-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  apk:
+    name: Build Android test installer
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    env:
+      CI: "1"
+      EXPO_OFFLINE: "1"
+    defaults:
+      run:
+        working-directory: mobile
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: mobile/package-lock.json
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - run: npm ci
+      - name: Generate Android project from Expo configuration
+        run: npx expo prebuild --platform android --no-install
+      - name: Build standalone test APK
+        working-directory: mobile/android
+        run: ./gradlew :app:assembleRelease --no-daemon --max-workers=2 -PreactNativeArchitectures=arm64-v8a
+      - name: Save installable Android preview
+        uses: actions/upload-artifact@v4
+        with:
+          name: mediflow-android-preview
+          path: mobile/android/app/build/outputs/apk/release/*.apk
+          if-no-files-found: error
+          retention-days: 14

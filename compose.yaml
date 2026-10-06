@@ -87,6 +87,16 @@ services:
       retries: 10
       start_period: 90s
 
+  push-scheduler:
+    profiles: [mobile-push]
+    build: ./backend
+    env_file: .env
+    command: python manage.py send_mobile_push --watch
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+
   backup:
     image: postgres:16-alpine
     profiles:

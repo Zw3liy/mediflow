@@ -15,6 +15,32 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  mobile:
+    name: Android and iPhone application checks
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: mobile
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: mobile/package-lock.json
+      - name: Install locked mobile dependencies
+        run: npm ci
+      - name: Check mobile types and lint
+        run: |
+          npm run typecheck
+          npm run lint
+          npm test
+      - name: Bundle both native platforms
+        env:
+          EXPO_OFFLINE: "1"
+        run: npm run export:native
+
   django:
     name: Django and PostgreSQL
     needs: security
@@ -271,6 +297,7 @@ jobs:
       - django
       - security
       - docker
+      - mobile
     if: >-
       github.event_name == 'push' &&
       github.ref == 'refs/heads/main'
