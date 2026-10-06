@@ -23,15 +23,24 @@ class SecurityGuardMiddleware:
         now = timezone.now()
         if request.user.is_authenticated:
             last_seen = request.session.get("security_last_seen", now.timestamp())
-            if now.timestamp() - last_seen > settings.SESSION_IDLE_TIMEOUT:
+            started_at = request.session.get("security_session_started", now.timestamp())
+            if (now.timestamp() - last_seen > settings.SESSION_IDLE_TIMEOUT
+                    or now.timestamp() - started_at >= settings.SESSION_ABSOLUTE_TIMEOUT):
                 logout(request)
-            elif now.timestamp() - last_seen >= 60 or "security_last_seen" not in request.session:
-                request.session["security_last_seen"] = now.timestamp()
+            else:
+                if "security_session_started" not in request.session:
+                    request.session["security_session_started"] = now.timestamp()
+                if now.timestamp() - last_seen >= 60 or "security_last_seen" not in request.session:
+                    request.session["security_last_seen"] = now.timestamp()
+        was_authenticated = request.user.is_authenticated
         response = self.get_response(request)
         if (getattr(request, "security_login_account", None) and request.user.is_authenticated
                 and bucket_key("account", request.user.get_username().strip().casefold()[:256]) == request.security_login_account
                 and response.status_code in (302, 303)):
             LoginAttemptBucket.objects.filter(key=request.security_login_account).delete()
+            if not was_authenticated:
+                request.session["security_session_started"] = now.timestamp()
+                request.session["security_last_seen"] = now.timestamp()
         if request.path.startswith(("/app/", "/admin/", "/api/")):
             patch_cache_control(response, private=True, no_store=True)
             response["Referrer-Policy"] = "no-referrer"

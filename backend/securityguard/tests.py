@@ -78,6 +78,15 @@ class LoginProtectionTests(TestCase):
         self.client.get("/app/")
         self.assertIn("_auth_user_id", self.client.session)
 
+    def test_activity_cannot_extend_absolute_session_lifetime(self):
+        self.client.force_login(self.user)
+        session = self.client.session
+        session["security_session_started"] = (timezone.now() - timedelta(hours=8)).timestamp()
+        session["security_last_seen"] = timezone.now().timestamp()
+        session.save()
+        self.client.get("/app/")
+        self.assertNotIn("_auth_user_id", self.client.session)
+
     def test_security_headers_on_login_and_api_errors(self):
         response = self.client.get("/app/login/")
         self.assertIn("no-store", response["Cache-Control"])
