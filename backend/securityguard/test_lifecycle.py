@@ -77,7 +77,7 @@ class LifecycleTests(TestCase):
         self.client.force_login(self.owner)
         self.client.get('/app/security/mfa/setup/')
         device = TOTPDevice.objects.get(user=self.owner)
-        code = str(totp(device.bin_key))
+        code = f"{totp(device.bin_key):06d}"
         response = self.client.post('/app/security/mfa/setup/', {'code':code, 'password':'Initial-'+'c4D7e9F2'*2})
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, 'Save your recovery codes')
@@ -97,7 +97,7 @@ class LifecycleTests(TestCase):
         self.client.force_login(self.owner)
         self.client.get('/app/security/mfa/setup/')
         device = TOTPDevice.objects.get(user=self.owner)
-        code = str(totp(device.bin_key))
+        code = f"{totp(device.bin_key):06d}"
         self.assertContains(self.client.post('/app/security/mfa/setup/', {'code':code, 'password':'wrong'}), 'Current password is incorrect')
         device.refresh_from_db()
         self.assertFalse(device.confirmed)
@@ -192,3 +192,26 @@ class LifecycleTests(TestCase):
         with self.assertRaises(ImproperlyConfigured):
             self.token()
         self.assertFalse(AccountInvitation.objects.exists())
+
+
+    @override_settings(ADMIN_MFA_REQUIRED=True)
+    def test_mfa_setup_can_sign_out_without_verification_and_keeps_csrf(self):
+        client = Client(enforce_csrf_checks=True)
+        client.force_login(self.owner)
+        response = client.get('/app/security/mfa/setup/')
+        self.assertContains(response, 'Sign out and return to sign-in')
+        self.assertContains(response, 'action="/app/logout/"')
+        self.assertEqual(client.post('/app/logout/').status_code, 403)
+        response = client.post('/app/logout/', {'csrfmiddlewaretoken': client.cookies['csrftoken'].value})
+        self.assertRedirects(response, '/app/login/')
+        self.assertNotIn('_auth_user_id', client.session)
+        self.assertContains(client.get('/app/login/'), 'Reception')
+
+    @override_settings(ADMIN_MFA_REQUIRED=True)
+    def test_mfa_setup_rejects_username_as_code_without_enrolling(self):
+        self.client.force_login(self.owner)
+        response = self.client.post('/app/security/mfa/setup/', {
+            'code': self.owner.username, 'password': 'Initial-'+'c4D7e9F2'*2})
+        self.assertContains(response, 'Six-digit code from your authenticator app')
+        self.assertFalse(TOTPDevice.objects.get(user=self.owner).confirmed)
+        self.assertFalse(RecoveryCode.objects.filter(user=self.owner).exists())
