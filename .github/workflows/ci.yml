@@ -225,6 +225,17 @@ jobs:
           curl --fail --silent --show-error \
             http://127.0.0.1:8000/health/ready/
 
+      - name: Verify admin static assets
+        run: |
+          curl --fail --silent --show-error \
+            --output /tmp/admin-base.css \
+            http://127.0.0.1:8000/static/admin/css/base.css
+          curl --fail --silent --show-error \
+            --output /tmp/admin-theme.js \
+            http://127.0.0.1:8000/static/admin/js/theme.js
+          test -s /tmp/admin-base.css
+          test -s /tmp/admin-theme.js
+
       - name: Show container logs on failure
         if: failure()
         run: |
