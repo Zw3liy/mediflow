@@ -38,6 +38,8 @@ npx eas-cli@latest build --platform ios --profile preview
 
 The Android preview is an APK. The iPhone preview needs Apple Developer signing and registered devices; install using the EAS internal distribution link. For App Store/TestFlight and Google Play builds, use `--profile production` and configure the relevant developer/store accounts. An iOS simulator build (`--platform ios --profile simulator`) runs on a Mac simulator and does not install on a physical iPhone. Never commit signing credentials, private keys or Google service files.
 
+The **iPhone native compilation** GitHub workflow builds native iPhone code on macOS without signing and saves `mediflow-iphone-unsigned-validation`. This artifact verifies compilation; it cannot be installed on a physical phone. Use the signed EAS build above for installation.
+
 ## Phone notifications
 
 In-app personal updates work without push credentials and refresh while the app is active. Background/lock-screen alerts require an EAS project, FCM v1 credentials for Android and APNs credentials for iOS. Set the build's `EXPO_PUBLIC_EAS_PROJECT_ID`, and configure Android's `GOOGLE_SERVICES_JSON` as an EAS secret file environment variable. Each user enables notifications in the native Updates tab on their physical device.

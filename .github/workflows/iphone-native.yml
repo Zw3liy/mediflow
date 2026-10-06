@@ -1,0 +1,70 @@
+name: iPhone native compilation
+
+on:
+  pull_request:
+    paths:
+      - "mobile/**"
+      - ".github/workflows/iphone-native.yml"
+  push:
+    branches: [main]
+    paths:
+      - "mobile/**"
+      - ".github/workflows/iphone-native.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: mediflow-iphone-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  iphone:
+    name: Compile unsigned native iPhone app
+    runs-on: macos-26
+    timeout-minutes: 45
+    env:
+      CI: "1"
+      EXPO_OFFLINE: "1"
+      EXPO_USE_PRECOMPILED_MODULES: "1"
+    defaults:
+      run:
+        working-directory: mobile
+        shell: bash
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: mobile/package-lock.json
+      - name: Check Xcode version
+        run: xcodebuild -version
+      - run: npm ci
+      - name: Generate iPhone project from Expo configuration
+        run: npx expo prebuild --platform ios --no-install
+      - name: Install native iPhone dependencies
+        run: pod install --project-directory=ios
+      - name: Compile native iPhone application without signing
+        run: |
+          xcodebuild \
+            -workspace ios/MediFlow.xcworkspace \
+            -scheme MediFlow \
+            -configuration Release \
+            -sdk iphoneos \
+            -destination 'generic/platform=iOS' \
+            -derivedDataPath build/ios \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO
+      - name: Archive compilation output
+        run: |
+          test -d build/ios/Build/Products/Release-iphoneos/MediFlow.app
+          tar -czf mediflow-iphone-unsigned.tar.gz \
+            -C build/ios/Build/Products/Release-iphoneos MediFlow.app
+      - uses: actions/upload-artifact@v4
+        with:
+          name: mediflow-iphone-unsigned-validation
+          path: mobile/mediflow-iphone-unsigned.tar.gz
+          if-no-files-found: error
+          retention-days: 14
