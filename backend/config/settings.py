@@ -68,6 +68,7 @@ INSTALLED_APPS = [
     "rest_framework",
     "tenancy",
     "portal",
+    "mobile_api.apps.MobileApiConfig",
     "securityguard",
     "django_otp",
     "django_otp.plugins.otp_totp",
@@ -246,6 +247,10 @@ LOGIN_URL = "/app/login/"
 LOGIN_REDIRECT_URL = "/app/"
 LOGOUT_REDIRECT_URL = "/app/login/"
 
+REST_FRAMEWORK["DEFAULT_THROTTLE_RATES"] = {"mobile_login": "5/min"}
+
+MOBILE_PUSH_ENABLED = os.environ.get("MOBILE_PUSH_ENABLED", "False").lower() in {"true", "1", "yes"}
+EXPO_ACCESS_TOKEN = os.environ.get("EXPO_ACCESS_TOKEN", "")
 # External services stay disabled until their credentials and stable origin are set.
 PUBLIC_BASE_URL = os.environ.get("MEDIFLOW_PUBLIC_URL", "").rstrip("/")
 EMAIL_ENABLED = os.environ.get("MEDIFLOW_EMAIL_ENABLED", "False").lower() == "true"

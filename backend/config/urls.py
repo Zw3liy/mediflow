@@ -10,6 +10,7 @@ urlpatterns = [
     path("health/live/", live, name="health-live"),
     path("health/ready/", ready, name="health-ready"),
     path("admin/", admin.site.urls),
+    path("api/mobile/", include("mobile_api.urls")),
     path("api/", include("patients.urls")),
     path("api/", include("scheduling.urls")),
     path("api/", include("notifications.urls")),
