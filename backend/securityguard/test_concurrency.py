@@ -2,7 +2,7 @@ from concurrent.futures import ThreadPoolExecutor
 from threading import Barrier
 from unittest import skipUnless
 
-from django.db import close_old_connections, connection
+from django.db import close_old_connections, connection, connections
 from django.test import Client, TransactionTestCase
 
 from securityguard.middleware import bucket_key
@@ -20,7 +20,9 @@ class LoginConcurrencyTests(TransactionTestCase):
                 barrier.wait(timeout=10)
                 return Client().post("/app/login/patient/", {"username": "missing-user", "password": "wrong"}).status_code
             finally:
-                close_old_connections()
+                # Persistent connections can survive close_old_connections()
+                # and prevent Django from dropping the disposable test DB.
+                connections.close_all()
 
         with ThreadPoolExecutor(max_workers=6) as executor:
             statuses = list(executor.map(attempt, range(6)))
