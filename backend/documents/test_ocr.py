@@ -15,7 +15,7 @@ from rest_framework.test import APIClient
 from patients.models import Patient
 from portal import tests as fixtures
 from .models import PatientDocumentScan
-from .ocr import OCRUnavailable, recognize_image, suggest_patient_details
+from .ocr import OCRUnavailable, recognize_image, suggest_patient_details, suggest_document_fields
 
 
 class RecognitionTests(SimpleTestCase):
@@ -26,6 +26,15 @@ class RecognitionTests(SimpleTestCase):
         self.assertNotIn('date_of_birth', result)
         self.assertNotIn('given_name', suggest_patient_details('First name: One\nFirst name: Two'))
         self.assertEqual(suggest_patient_details('Date of birth: 1990-04-03')['date_of_birth'], '1990-04-03')
+
+    def test_document_mapping_copies_values_without_using_clinic_details(self):
+        fields = {field['label']: field['value'] for field in suggest_document_fields(
+            'MEDICAL CERTIFICATE\nEmail: clinic@example.com\nFull name: Demo Patient\nDate of first consultation: 2025-01-08\nNature of illness or injury: Reviewed description\nComments: ...')}
+        self.assertEqual(fields['Patient full name'], 'Demo Patient')
+        self.assertEqual(fields['Date of first consultation'], '2025-01-08')
+        self.assertEqual(fields['Document type'], 'Medical certificate')
+        self.assertEqual(fields['Comments'], '')
+        self.assertNotIn('email', suggest_patient_details('MEDICAL CERTIFICATE\nEmail: clinic@example.com'))
 
     def test_bad_base64_and_oversized_input_are_rejected(self):
         for encoded in ('!!', '', None, 'a' * 11_184_816):

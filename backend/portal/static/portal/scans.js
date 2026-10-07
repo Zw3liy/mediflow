@@ -44,12 +44,12 @@
   function reset() {draft=null;el('review').hidden=true;el('saved').hidden=true;el('preview').hidden=true;el('pdf').hidden=true;el('upload').hidden=false;el('image').value='';}
   const certificateLabels = ['Patient full name', 'Document type', 'Practitioner name', 'Date of first consultation', 'Follow-up consultation date', 'Unfit for duty from', 'Unfit for duty to', 'Nature of illness or injury', 'Work can be resumed on', 'Certificate date', 'Comments'];
   function addDocumentField(label='', value='') {
-    const row=document.createElement('div');row.className='two-columns';
+    const row=document.createElement('div');row.className='scan-document-field';
     const name=document.createElement('input');name.value=label;name.maxLength=100;name.placeholder='Field name';name.setAttribute('aria-label','Document field name');name.required=true;
-    const entry=document.createElement('textarea');entry.value=value;entry.maxLength=2000;entry.rows=2;entry.setAttribute('aria-label',label||'Document field value');
+    const entry=document.createElement('textarea');entry.value=value;entry.maxLength=2000;entry.rows=2;entry.placeholder='Not confidently read — enter after checking the picture';entry.setAttribute('aria-label',label||'Document field value');
     const remove=document.createElement('button');remove.type='button';remove.className='button secondary';remove.textContent='Remove field';remove.addEventListener('click',()=>{row.remove();el('confirmed').checked=false;});
     [name,entry].forEach(input=>input.addEventListener('input',()=>{el('confirmed').checked=false;}));
-    row.append(name,entry,remove);el('document-fields').append(row);
+    const nameLabel=document.createElement('label');nameLabel.textContent='Field name';nameLabel.append(name);const valueLabel=document.createElement('label');valueLabel.textContent='Reviewed value';valueLabel.append(entry);row.append(nameLabel,valueLabel,remove);el('document-fields').append(row);
   }
   el('add-field').addEventListener('click',()=>{if(el('document-fields').children.length<50)addDocumentField();});
   function documentFields() {return Array.from(el('document-fields').children).map(row=>({label:row.querySelector('input').value,value:row.querySelector('textarea').value}));}

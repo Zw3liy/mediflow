@@ -13,7 +13,7 @@ from rest_framework.throttling import ScopedRateThrottle
 
 from auditlog.services import record_audit_event
 from documents.models import PatientDocumentScan
-from documents.ocr import OCRUnavailable, recognize_image
+from documents.ocr import OCRUnavailable, recognize_image, suggest_document_fields
 from documents.storage import DocumentStorageError, get_document_storage
 from patients.models import Patient
 from .views import MobileBase
@@ -107,7 +107,8 @@ class MobileDocumentScans(StaffScanBase):
             raise ValidationError(error.messages) from error
         scan = PatientDocumentScan(practice=request.auth.practice, uploaded_by=request.user,
             original_content_type=output['content_type'], original_sha256=output['sha256'],
-            extracted_text=output['text'], reviewed_text=output['text'], suggestions=output['suggestions'])
+            extracted_text=output['text'], reviewed_text=output['text'], suggestions=output['suggestions'],
+            document_fields=output.get('document_fields', suggest_document_fields(output['text'])))
         prefix = f'practices/{scan.practice_id}/patient-scans/{scan.pk}/'
         scan.original_key = prefix + ('original.jpg' if output['content_type'] == 'image/jpeg' else 'original.png')
         scan.pdf_key = prefix + 'searchable.pdf'

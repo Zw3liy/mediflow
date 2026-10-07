@@ -39,6 +39,8 @@ def suggest_patient_details(text):
     limits = {'given_name': 100, 'family_name': 100, 'file_number': 32, 'mobile': 32, 'email': 254, 'address': 500}
     result = {}
     for field, label in labels.items():
+        if field in {'email', 'mobile', 'address'} and re.search(r'medical certificate', text, re.I):
+            label = r'patient\s+' + label
         values = re.findall(r'^\s*' + label + r'\s*[:=]\s*(.+?)\s*$', text, re.I | re.M)
         if len(set(values)) != 1:
             continue
@@ -64,6 +66,31 @@ def suggest_patient_details(text):
         elif len(value) <= limits[field]:
             result[field] = value
     return result
+
+
+DOCUMENT_LABELS = {
+    'Patient full name': r'(?:patient full name|full name)',
+    'Practitioner name': r'(?:practitioner name|doctor name)',
+    'Date of first consultation': r'date of first consultation',
+    'Follow-up consultation date': r'(?:and again on|follow.up consultation date)',
+    'Unfit for duty from': r'(?:unfit for duty from|from)',
+    'Unfit for duty to': r'(?:unfit for duty to|to)',
+    'Nature of illness or injury': r'nature of illness or injury',
+    'Work can be resumed on': r'work can be resumed on',
+    'Certificate date': r'certificate date',
+    'Comments': r'comments',
+}
+
+
+def suggest_document_fields(text):
+    """Copy readable labelled values verbatim; never substitute clinic contacts for patient data."""
+    fields = [{'label': 'Document type', 'value': 'Medical certificate' if re.search(r'medical certificate', text, re.I) else ''}]
+    for label, pattern in DOCUMENT_LABELS.items():
+        values = re.findall(r'^\s*' + pattern + r'\s*[:=]\s*([^\n]+)', text, re.I | re.M)
+        values = [re.sub(r'[_.]{2,}', '', value).strip() for value in values]
+        values = [value for value in values if len(value) >= 2 and re.search(r'[A-Za-z0-9]', value)]
+        fields.append({'label': label, 'value': values[0][:2000] if len(set(values)) == 1 else ''})
+    return fields
 
 
 def recognize_image(encoded):
@@ -123,4 +150,5 @@ def recognize_image(encoded):
             raise OCRUnavailable('Text recognition could not finish. Try a clearer photo.')
         _, text, pdf = max(candidates, key=lambda candidate: candidate[0])
     return {'original': content, 'content_type': content_type, 'sha256': hashlib.sha256(content).hexdigest(),
-            'pdf': pdf, 'text': text, 'suggestions': suggest_patient_details(text)}
+            'pdf': pdf, 'text': text, 'suggestions': suggest_patient_details(text),
+            'document_fields': suggest_document_fields(text)}
