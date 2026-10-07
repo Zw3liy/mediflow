@@ -14,6 +14,8 @@ class BrowserScanTests(TestCase):
         fixtures.PortalTests.setUpTestData.__func__(cls)
 
     def setUp(self):
+        from django.core.cache import cache
+        cache.clear()
         self.directory=tempfile.TemporaryDirectory();self.addCleanup(self.directory.cleanup)
         setting=override_settings(DOCUMENT_STORAGE_ROOT=self.directory.name);setting.enable();self.addCleanup(setting.disable)
         self.client=Client();self.client.force_login(self.reception)

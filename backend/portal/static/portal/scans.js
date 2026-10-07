@@ -42,11 +42,24 @@
     el('confirmed').checked=false;changes();
   }
   function reset() {draft=null;el('review').hidden=true;el('saved').hidden=true;el('preview').hidden=true;el('pdf').hidden=true;el('upload').hidden=false;el('image').value='';}
+  const certificateLabels = ['Patient full name', 'Document type', 'Practitioner name', 'Date of first consultation', 'Follow-up consultation date', 'Unfit for duty from', 'Unfit for duty to', 'Nature of illness or injury', 'Work can be resumed on', 'Certificate date', 'Comments'];
+  function addDocumentField(label='', value='') {
+    const row=document.createElement('div');row.className='two-columns';
+    const name=document.createElement('input');name.value=label;name.maxLength=100;name.placeholder='Field name';name.setAttribute('aria-label','Document field name');name.required=true;
+    const entry=document.createElement('textarea');entry.value=value;entry.maxLength=2000;entry.rows=2;entry.setAttribute('aria-label',label||'Document field value');
+    const remove=document.createElement('button');remove.type='button';remove.className='button secondary';remove.textContent='Remove field';remove.addEventListener('click',()=>{row.remove();el('confirmed').checked=false;});
+    [name,entry].forEach(input=>input.addEventListener('input',()=>{el('confirmed').checked=false;}));
+    row.append(name,entry,remove);el('document-fields').append(row);
+  }
+  el('add-field').addEventListener('click',()=>{if(el('document-fields').children.length<50)addDocumentField();});
+  function documentFields() {return Array.from(el('document-fields').children).map(row=>({label:row.querySelector('input').value,value:row.querySelector('textarea').value}));}
   function show(scan) {
+    el('document-fields').replaceChildren();
+    (scan.document_fields?.length?scan.document_fields:certificateLabels.map(label=>({label,value:''}))).forEach(field=>addDocumentField(field.label,field.value));
     draft=scan;el('upload').hidden=true;el('preview').src=endpoint(`${scan.id}/download/original/`);el('preview').hidden=false;
     el('pdf').href=endpoint(`${scan.id}/download/pdf/`);el('pdf').hidden=false;
     el('review').hidden=!!scan.reviewed_at;el('saved').hidden=!scan.reviewed_at;
-    if(scan.reviewed_at){el('saved-info').textContent=`${scan.title} · ${patients.find(p=>p.id===scan.patient_id)?.name||'Patient'}`;el('saved-text').textContent=scan.reviewed_text;}
+    if(scan.reviewed_at){el('saved-info').textContent=`${scan.title} · ${patients.find(p=>p.id===scan.patient_id)?.name||'Patient'}`;el('saved-text').textContent=scan.reviewed_text+'\n\n'+(scan.document_fields||[]).map(field=>`${field.label}: ${field.value}`).join('\n');}
     else {el('patient').value='';el('title').value=scan.title;el('text').value=scan.reviewed_text;selectPatient();}
   }
   async function refresh() {
@@ -65,6 +78,7 @@
     const encoded=await new Promise((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>resolve(reader.result.split(',')[1]);reader.onerror=()=>reject(new Error('Could not read the picture.'));reader.readAsDataURL(file);});
     show(await api('',{image_base64:encoded}));await refresh();
   });});
+  ['text','title'].forEach(id=>el(id).addEventListener('input',()=>{el('confirmed').checked=false;}));
   el('patient').addEventListener('change',selectPatient);
   fields.forEach(field=>el(field).addEventListener('input',()=>{el('confirmed').checked=false;changes();}));
   el('refresh').addEventListener('click',()=>run(async()=>{await refresh();selectPatient();}));
@@ -74,7 +88,7 @@
     if(!window.confirm(patient?`Save to ${patient.name} and approve the displayed changes?`:'Create the reviewed patient record and attach this document?'))return;
     const details=Object.fromEntries(fields.map(field=>[field,el(field).value]));details.date_of_birth=details.date_of_birth||null;
     const result=await api(`${draft.id}/`,{confirmed:true,patient_id:patient?.id||null,expected_patient_updated_at:patient?.updated_at,
-      patient_details:details,title:el('title').value,reviewed_text:el('text').value});
+      patient_details:details,document_fields:documentFields(),title:el('title').value,reviewed_text:el('text').value});
     await refresh();show(result);
   });});
   el('discard').addEventListener('click',()=>run(async()=>{if(!window.confirm('Discard this unfinished scan?'))return;await api(`${draft.id}/`,undefined,'DELETE');reset();await refresh();}));

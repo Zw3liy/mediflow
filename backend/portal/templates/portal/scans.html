@@ -9,7 +9,7 @@
 <p id="scan-status" role="status" aria-live="polite"></p><p id="scan-error" role="alert"></p>
 <img id="scan-preview" alt="Original document picture" hidden>
 <form id="scan-review" hidden><h2>2 · Review patient details</h2>
-<p>Confirm the correct patient. Review every suggestion; unclear or unlabelled text may need manual entry.</p>
+<p>Handwriting may not be recognised accurately. Enter missing details manually. Confirm the correct patient. Review every suggestion; unclear or unlabelled text may need manual entry.</p>
 <label for="scan-patient">Patient</label><select id="scan-patient"><option value="">Create a new patient record</option></select>
 <button id="scan-refresh" class="button secondary" type="button">Refresh patient directory</button>
 <div class="two-columns">
@@ -22,6 +22,8 @@
 </div>
 <p><label for="scan-address">Address</label><textarea id="scan-address" name="address" maxlength="500" rows="3"></textarea></p>
 <div id="scan-changes" aria-live="polite"></div>
+<h3>Document fields — edit every entry</h3><p>These entries belong to this document. Dates and handwritten details must be checked against the picture. They do not change the doctor’s clinical record.</p>
+<div id="scan-document-fields"></div><button id="scan-add-field" type="button" class="button secondary">Add another field</button>
 <p><label for="scan-title">Document title</label><input id="scan-title" maxlength="160" value="Scanned document" required></p>
 <p><label for="scan-text">Recognised text — review and correct</label><textarea id="scan-text" maxlength="100000" rows="12"></textarea></p>
 <p class="muted">The PDF retains the picture and machine-recognised text. Corrected text is saved separately alongside it.</p>

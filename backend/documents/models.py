@@ -82,6 +82,7 @@ class PatientDocumentScan(models.Model):
     extracted_text = models.TextField(blank=True)
     reviewed_text = models.TextField(blank=True)
     suggestions = models.JSONField(default=dict)
+    document_fields = models.JSONField(default=list, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     reviewed_at = models.DateTimeField(null=True, blank=True)
 

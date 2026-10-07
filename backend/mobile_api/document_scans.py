@@ -38,7 +38,13 @@ class ReviewedPatientSerializer(serializers.ModelSerializer):
         return value
 
 
+class DocumentFieldSerializer(serializers.Serializer):
+    label = serializers.CharField(max_length=100)
+    value = serializers.CharField(max_length=2000, allow_blank=True)
+
+
 class ReviewSerializer(serializers.Serializer):
+    document_fields = DocumentFieldSerializer(many=True, required=False, max_length=50)
     confirmed = serializers.BooleanField()
     patient_id = serializers.UUIDField(required=False, allow_null=True)
     expected_patient_updated_at = serializers.DateTimeField(required=False)
@@ -55,7 +61,7 @@ class ReviewSerializer(serializers.Serializer):
 def scan_info(scan):
     return {'id': str(scan.pk), 'title': scan.title, 'patient_id': str(scan.patient_id) if scan.patient_id else None,
             'extracted_text': scan.extracted_text, 'reviewed_text': scan.reviewed_text,
-            'suggestions': scan.suggestions, 'reviewed_at': scan.reviewed_at,
+            'suggestions': scan.suggestions, 'document_fields': scan.document_fields, 'reviewed_at': scan.reviewed_at,
             'created_at': scan.created_at}
 
 
@@ -157,9 +163,10 @@ class MobileDocumentScanReview(StaffScanBase):
                 scan.patient = patient
                 scan.title = values['title']
                 scan.reviewed_text = values['reviewed_text']
+                scan.document_fields = values.get('document_fields', [])
                 scan.reviewed_by = request.user
                 scan.reviewed_at = timezone.now()
-                scan.save(update_fields=['patient', 'title', 'reviewed_text', 'reviewed_by', 'reviewed_at'])
+                scan.save(update_fields=['patient', 'title', 'reviewed_text', 'document_fields', 'reviewed_by', 'reviewed_at'])
                 record_audit_event(practice=scan.practice, actor=request.user, action='patient_document.reviewed',
                     object_type='patient_document_scan', object_id=scan.pk,
                     purpose='Approve scan and patient demographics', outcome='success',

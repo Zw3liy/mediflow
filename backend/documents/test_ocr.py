@@ -112,6 +112,19 @@ class ScanWorkflowTests(TestCase):
         self.assertEqual(Patient.objects.count(), count + 1)
         self.assertEqual(len(self.api.get('/api/mobile/document-scans/').data['documents']), 1)
 
+    def test_custom_document_fields_are_validated_and_saved(self):
+        scan = self.draft()
+        url = f'/api/mobile/document-scans/{scan.pk}/'
+        fields = [{'label': 'Work can be resumed on', 'value': 'Check handwritten date'},
+                  {'label': 'Custom field', 'value': 'Reviewed value'}]
+        invalid = self.review(document_fields=[{'label': '', 'value': 'value'}])
+        self.assertEqual(self.api.post(url, invalid, format='json').status_code, 400)
+        response = self.api.post(url, self.review(document_fields=fields), format='json')
+        self.assertEqual(response.status_code, 200, response.data)
+        scan.refresh_from_db()
+        self.assertEqual(scan.document_fields, fields)
+        self.assertEqual(self.api.get(url).data['document_fields'], fields)
+
     def test_existing_patient_update_requires_current_version_and_preserves_login(self):
         scan = self.draft(); data = self.review(patient_id=str(self.patient.pk))
         data['patient_details']['file_number'] = self.patient.file_number

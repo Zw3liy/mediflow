@@ -1,4 +1,5 @@
 """Local-only OCR: patient documents never go to an external recognition service."""
+import csv
 import base64
 import binascii
 import hashlib
@@ -10,7 +11,7 @@ import warnings
 from datetime import datetime
 from pathlib import Path
 
-from PIL import Image, ImageOps, UnidentifiedImageError
+from PIL import Image, ImageOps, ImageFilter, UnidentifiedImageError
 from django.core.exceptions import ValidationError
 from django.core.validators import validate_email
 
@@ -92,18 +93,34 @@ def recognize_image(encoded):
                 source.load()
                 image = ImageOps.exif_transpose(source).convert('RGB')
                 image.thumbnail((2400, 3200))
+                # Normalize low contrast photos without changing the retained original.
+                image = ImageOps.autocontrast(ImageOps.grayscale(image), cutoff=1)
+                if image.width < 1600 and image.height < 2200:
+                    image = image.resize((image.width * 2, image.height * 2), Image.Resampling.LANCZOS)
+                image = image.filter(ImageFilter.UnsharpMask(radius=1, percent=120, threshold=3))
     except (UnidentifiedImageError, OSError, ValueError, Image.DecompressionBombError, Image.DecompressionBombWarning) as error:
         raise ValidationError('The image is damaged or too large. Take another photo.') from error
     with tempfile.TemporaryDirectory(prefix='mediflow-ocr-') as directory:
         input_path = Path(directory) / 'input.png'
         output = Path(directory) / 'scan'
         image.save(input_path)
-        try:
-            subprocess.run(['tesseract', str(input_path), str(output), '-l', 'eng', '--psm', '3', 'txt', 'pdf'],
-                           check=True, timeout=20, capture_output=True, env=None)
-            text = output.with_suffix('.txt').read_text(encoding='utf-8')[:100_000]
-            pdf = output.with_suffix('.pdf').read_bytes()
-        except (OSError, subprocess.SubprocessError) as error:
-            raise OCRUnavailable('Text recognition could not finish. Try a clearer photo.') from error
+        candidates = []
+        for mode in ('3', '6'):
+            output = Path(directory) / ('scan-' + mode)
+            try:
+                subprocess.run(['tesseract', str(input_path), str(output), '-l', 'eng', '--psm', mode, 'txt', 'pdf', 'tsv'],
+                               check=True, timeout=15, capture_output=True, env=None)
+                text = output.with_suffix('.txt').read_text(encoding='utf-8')[:100_000]
+                with output.with_suffix('.tsv').open(encoding='utf-8') as stream:
+                    words = [(float(row['conf']), len(row['text'])) for row in csv.DictReader(stream, delimiter='\t')
+                             if row.get('text', '').strip() and float(row['conf']) >= 0]
+                # Prefer confidently recognised characters, rather than a longer garbled result.
+                score = sum((confidence - 40) * min(length, 20) for confidence, length in words)
+                candidates.append((score, text, output.with_suffix('.pdf').read_bytes()))
+            except (OSError, ValueError, KeyError, subprocess.SubprocessError):
+                continue
+        if not candidates:
+            raise OCRUnavailable('Text recognition could not finish. Try a clearer photo.')
+        _, text, pdf = max(candidates, key=lambda candidate: candidate[0])
     return {'original': content, 'content_type': content_type, 'sha256': hashlib.sha256(content).hexdigest(),
             'pdf': pdf, 'text': text, 'suggestions': suggest_patient_details(text)}

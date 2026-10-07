@@ -59,3 +59,8 @@ npx eas-cli@latest build --platform android --profile preview
 ```
 
 Use the existing Expo project, Firebase file environment variable and signing credentials. The signed cloud build requires that account's authenticated EAS session; it cannot be claimed from local bundle tests. Backend deployment requires execution on the user's Ubuntu server.
+
+## Photo recognition and document fields
+Recognition normalizes contrast, enlarges small photographs and sharpens text, then compares automatic-page and single-block Tesseract layouts using word confidence. Handwriting still requires review; accuracy is not guaranteed. The original upload is preserved.
+
+Web and native review screens provide editable certificate fields and up to 50 custom label/value entries. Values are stored with the document, independently of patient demographics and clinical records. Corrected text and document entries do not modify the original image or the machine-generated searchable PDF.
