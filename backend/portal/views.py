@@ -81,7 +81,9 @@ def dashboard(request, workspace):
     context = dict(practice=practice, practices=practices, role=role, workspace=workspace,
         today=timezone.localdate(),
         can_review=Membership.objects.filter(user=request.user, practice=practice, active=True, role__in=["owner", "reception"]).exists(),
-        title={"admin": "Practice overview", "doctor": "Clinical workspace", "reception": "Reception workspace", "patient": "Your care"}[workspace],
+        title=(f"{request.user.get_full_name().strip() or request.user.username} — Clinical workspace"
+            if role == "doctor" else
+            {"admin": "Practice overview", "doctor": "Clinical workspace", "reception": "Reception workspace", "patient": "Your care"}[workspace]),
         appointments=appointments[:50], patient_count=patients.count(),
         next_patient=next_patient,
         next_patient_notified=Notification.objects.filter(appointment=next_patient, kind="doctor_ready").exists() if next_patient else False,
