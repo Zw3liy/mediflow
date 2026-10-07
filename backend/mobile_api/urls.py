@@ -1,7 +1,11 @@
 from django.urls import path
 from . import views
+from .document_scans import MobileDocumentScans, MobileDocumentScanReview, MobileDocumentScanDownload
 
 urlpatterns = [
+    path("document-scans/", MobileDocumentScans.as_view()),
+    path("document-scans/<uuid:pk>/", MobileDocumentScanReview.as_view()),
+    path("document-scans/<uuid:pk>/download/<str:kind>/", MobileDocumentScanDownload.as_view()),
     path("login/", views.MobileLogin.as_view()),
     path("logout/", views.MobileLogout.as_view()),
     path("dashboard/", views.MobileDashboard.as_view()),

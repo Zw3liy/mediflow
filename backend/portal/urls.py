@@ -1,11 +1,15 @@
 from django.contrib.auth import views as auth_views
 from django.urls import path
-from . import views
+from . import views, scans
 from .auth import WorkspaceLoginView
 from securityguard import views as security_views
 from securityguard.forms import QueuedPasswordResetForm
 
 urlpatterns = [
+    path("scans/", scans.scan_page, name="portal-scans"),
+    path("scans/api/", scans.BrowserDocumentScans.as_view()),
+    path("scans/api/<uuid:pk>/", scans.BrowserDocumentReview.as_view()),
+    path("scans/api/<uuid:pk>/download/<str:kind>/", scans.BrowserDocumentDownload.as_view()),
     path("privacy/", views.privacy, name="portal-privacy"),
     path("security/mfa/", security_views.mfa, name="portal-mfa"),
     path("security/mfa/setup/", security_views.mfa_setup, name="portal-mfa-setup"),

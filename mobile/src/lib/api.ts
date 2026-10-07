@@ -12,7 +12,7 @@ function errorMessage(data:unknown):string{
   return 'Unable to complete this request.';
 }
 export async function request<T>(baseUrl:string,path:string,token?:string,body?:unknown,method?:string):Promise<T>{
-  const controller=new AbortController();const timeout=setTimeout(()=>controller.abort(),20000);
+  const controller=new AbortController();const timeout=setTimeout(()=>controller.abort(),path.startsWith('document-scans/')?70000:20000);
   try{
     const response=await fetch(`${baseUrl}/api/mobile/${path}`,{method:method??(body===undefined?'GET':'POST'),
       headers:{'Content-Type':'application/json',...(token?{Authorization:`Bearer ${token}`}:{})},body:body===undefined?undefined:JSON.stringify(body),signal:controller.signal});

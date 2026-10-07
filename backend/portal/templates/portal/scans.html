@@ -1,0 +1,37 @@
+{% extends 'portal/base.html' %}{% load static %}
+{% block content %}
+<div class="page-heading"><div><p class="eyebrow">PATIENT DOCUMENTS</p><h1>Scan patient document</h1><p class="muted">Capture a clear photograph, review recognised details, and save to the correct patient.</p></div></div>
+<section id="document-scanner" data-practice="{{ practice.pk }}" class="panel">
+<form id="scan-upload">{% csrf_token %}<h2>1 · Capture or choose a picture</h2>
+<p>Use a JPEG or PNG picture of one complete page, up to 8 MB. On a phone, the camera option can take a new photograph.</p>
+<label for="scan-image">Document picture</label><input id="scan-image" type="file" accept="image/jpeg,image/png" capture="environment" required>
+<p><button class="button" type="submit">Read document</button></p></form>
+<p id="scan-status" role="status" aria-live="polite"></p><p id="scan-error" role="alert"></p>
+<img id="scan-preview" alt="Original document picture" hidden>
+<form id="scan-review" hidden><h2>2 · Review patient details</h2>
+<p>Confirm the correct patient. Review every suggestion; unclear or unlabelled text may need manual entry.</p>
+<label for="scan-patient">Patient</label><select id="scan-patient"><option value="">Create a new patient record</option></select>
+<button id="scan-refresh" class="button secondary" type="button">Refresh patient directory</button>
+<div class="two-columns">
+<p><label for="scan-file_number">Patient file number</label><input id="scan-file_number" name="file_number" maxlength="32" required></p>
+<p><label for="scan-given_name">Given name</label><input id="scan-given_name" name="given_name" maxlength="100" required></p>
+<p><label for="scan-family_name">Family name</label><input id="scan-family_name" name="family_name" maxlength="100" required></p>
+<p><label for="scan-date_of_birth">Date of birth</label><input id="scan-date_of_birth" name="date_of_birth" type="date"></p>
+<p><label for="scan-mobile">Mobile number</label><input id="scan-mobile" name="mobile" maxlength="32" type="tel"></p>
+<p><label for="scan-email">Email</label><input id="scan-email" name="email" type="email"></p>
+</div>
+<p><label for="scan-address">Address</label><textarea id="scan-address" name="address" maxlength="500" rows="3"></textarea></p>
+<div id="scan-changes" aria-live="polite"></div>
+<p><label for="scan-title">Document title</label><input id="scan-title" maxlength="160" value="Scanned document" required></p>
+<p><label for="scan-text">Recognised text — review and correct</label><textarea id="scan-text" maxlength="100000" rows="12"></textarea></p>
+<p class="muted">The PDF retains the picture and machine-recognised text. Corrected text is saved separately alongside it.</p>
+<label class="confirm"><input id="scan-confirmed" type="checkbox" required> I reviewed the document and approve these patient details.</label>
+<div class="form-actions"><button class="button" type="submit">Approve &amp; save to patient file</button><button id="scan-discard" class="button secondary" type="button">Discard draft</button></div>
+</form>
+<div id="scan-saved" hidden><h2>Document saved</h2><p id="scan-saved-info"></p><pre id="scan-saved-text"></pre><button id="scan-another" type="button" class="button">Scan another document</button></div>
+<p><a id="scan-pdf" class="button secondary" hidden>Download searchable PDF</a></p>
+</section>
+<section class="panel"><h2>Unfinished drafts</h2><div id="scan-drafts"></div></section>
+<section class="panel"><h2>Saved patient documents</h2><div id="scan-documents"></div></section>
+<script src="{% static 'portal/scans.js' %}" defer></script>
+{% endblock %}

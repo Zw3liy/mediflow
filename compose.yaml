@@ -197,13 +197,16 @@ services:
       DJANGO_PRODUCTION: ${DJANGO_PRODUCTION:-True}
       POSTGRES_HOST: db
       POSTGRES_PORT: "5432"
+      DOCUMENT_STORAGE_ROOT: /app/private_documents
+    volumes:
+      - private_documents:/app/private_documents
     depends_on:
       web:
         condition: service_healthy
     command:
       - sh
       - -c
-      - while true; do python manage.py clearsessions && python manage.py clear_login_attempts || exit 1; sleep 86400; done
+      - while true; do python manage.py clearsessions && python manage.py clear_login_attempts && python manage.py cleanup_document_scans || exit 1; sleep 86400; done
 
   document-scanner:
     build:
