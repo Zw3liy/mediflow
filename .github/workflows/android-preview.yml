@@ -23,7 +23,7 @@ jobs:
   apk:
     name: Build Android test installer
     runs-on: ubuntu-24.04
-    timeout-minutes: 45
+    timeout-minutes: 60
     env:
       CI: "1"
       EXPO_OFFLINE: "1"
@@ -46,7 +46,7 @@ jobs:
         run: npx expo prebuild --platform android --no-install
       - name: Build standalone test APK
         working-directory: mobile/android
-        run: ./gradlew :app:assembleRelease --no-daemon --max-workers=2 -PreactNativeArchitectures=arm64-v8a
+        run: ./gradlew :app:assembleRelease --no-daemon --max-workers=2 -PreactNativeArchitectures=arm64-v8a,x86_64
       - name: Save installable Android preview
         uses: actions/upload-artifact@v4
         with:

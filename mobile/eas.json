@@ -12,7 +12,8 @@
       "distribution": "internal",
       "android": {
         "buildType": "apk"
-      }
+      },
+      "autoIncrement": true
     },
     "simulator": {
       "ios": {
@@ -21,6 +22,24 @@
     },
     "production": {
       "autoIncrement": true
+    },
+    "patient-preview": {
+      "extends": "preview",
+      "env": {
+        "EXPO_PUBLIC_APP_WORKSPACE": "patient"
+      }
+    },
+    "doctor-preview": {
+      "extends": "preview",
+      "env": {
+        "EXPO_PUBLIC_APP_WORKSPACE": "doctor"
+      }
+    },
+    "reception-preview": {
+      "extends": "preview",
+      "env": {
+        "EXPO_PUBLIC_APP_WORKSPACE": "reception"
+      }
     }
   },
   "submit": {

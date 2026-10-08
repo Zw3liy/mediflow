@@ -1,11 +1,27 @@
 from django.contrib.auth import views as auth_views
 from django.urls import path
-from . import views
+from . import views, scans
 from .auth import WorkspaceLoginView
 from securityguard import views as security_views
 from securityguard.forms import QueuedPasswordResetForm
 
+from . import health
+
+from . import registrations
+
 urlpatterns = [
+    path("registrations/", registrations.page),
+    path("registrations/api/", registrations.BrowserRegistrations.as_view()),
+    path("registrations/api/patients/<uuid:pk>/", registrations.BrowserPatient.as_view()),
+    path("registrations/api/accounts/<int:pk>/", registrations.BrowserAccount.as_view()),
+    path("health/", health.page, name="portal-health"),
+    path("health/api/patients/", health.BrowserPatients.as_view()),
+    path("health/api/<uuid:patient_id>/", health.BrowserEntries.as_view()),
+    path("health/api/<uuid:patient_id>/<int:pk>/", health.BrowserEdit.as_view()),
+    path("scans/", scans.scan_page, name="portal-scans"),
+    path("scans/api/", scans.BrowserDocumentScans.as_view()),
+    path("scans/api/<uuid:pk>/", scans.BrowserDocumentReview.as_view()),
+    path("scans/api/<uuid:pk>/download/<str:kind>/", scans.BrowserDocumentDownload.as_view()),
     path("privacy/", views.privacy, name="portal-privacy"),
     path("security/mfa/", security_views.mfa, name="portal-mfa"),
     path("security/mfa/setup/", security_views.mfa_setup, name="portal-mfa-setup"),

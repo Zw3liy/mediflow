@@ -35,6 +35,7 @@ class Patient(models.Model):
         blank=True,
     )
     email = models.EmailField(blank=True)
+    address = models.CharField(max_length=500, blank=True)
     emergency_contact_name = models.CharField(
         max_length=160,
         blank=True,

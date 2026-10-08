@@ -9,7 +9,7 @@ from tenancy.models import Membership
 class PatientForm(forms.ModelForm):
     class Meta:
         model = Patient
-        fields = ["file_number", "given_name", "family_name", "date_of_birth", "mobile", "email", "portal_user"]
+        fields = ["file_number", "given_name", "family_name", "date_of_birth", "mobile", "email", "address", "emergency_contact_name", "emergency_contact_mobile", "portal_user"]
         widgets = {"date_of_birth": forms.DateInput(attrs={"type": "date"})}
 
     def __init__(self, *args, practice, **kwargs):

@@ -1,0 +1,9 @@
+{% extends 'portal/base.html' %}{% load static %}{% block content %}
+<h1>My Health</h1><p>Measurements, reports and daily wellbeing in one patient record.</p>
+<section id="health-workspace" class="panel" data-practice="{{ practice.pk }}" data-role="{{ role }}">
+{% csrf_token %}<label>Patient <select id="health-patient"></select></label><p id="health-status" role="status"></p>
+<h2>Recent trends</h2><div id="health-trends"></div><div id="health-reminders"></div>
+<h2>Add or edit a record</h2><form id="health-form"><label>Section <select id="health-kind"><option value="wellness">Daily wellness</option>{% if role != 'patient' %}<option value="vitals">Vitals</option><option value="report">Test / imaging report</option>{% endif %}</select></label><div id="health-fields"></div><button class="button">Save record</button><button id="health-cancel" type="button" class="button">New record</button></form>
+<h2>Patient timeline</h2><div id="health-timeline"></div>
+<p>Report summaries can cover laboratory, X-ray and vision results. Store source documents using Scan documents. Live device readings are awaiting device integration.</p></section>
+<script src="{% static 'portal/health.js' %}" defer></script>{% endblock %}

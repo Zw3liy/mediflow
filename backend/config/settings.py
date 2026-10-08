@@ -234,7 +234,7 @@ X_FRAME_OPTIONS = "DENY"
 # Deliberate staged HSTS rollout: do not force policies on other hostnames or
 # request permanent browser preloading before the operator verifies them.
 SILENCED_SYSTEM_CHECKS = ["security.W005", "security.W021"]
-DATA_UPLOAD_MAX_MEMORY_SIZE = 2 * 1024 * 1024
+DATA_UPLOAD_MAX_MEMORY_SIZE = 12 * 1024 * 1024  # Bounded 8 MB photo plus base64 envelope.
 
 # Browser APIs use CSRF-protected sessions. Native bearer authentication, when
 # deployed, is declared by the mobile views rather than HTTP Basic defaults.
@@ -247,7 +247,7 @@ LOGIN_URL = "/app/login/"
 LOGIN_REDIRECT_URL = "/app/"
 LOGOUT_REDIRECT_URL = "/app/login/"
 
-REST_FRAMEWORK["DEFAULT_THROTTLE_RATES"] = {"mobile_login": "5/min"}
+REST_FRAMEWORK["DEFAULT_THROTTLE_RATES"] = {"mobile_login": "5/min", "document_scan": "3/min"}
 
 MOBILE_PUSH_ENABLED = os.environ.get("MOBILE_PUSH_ENABLED", "False").lower() in {"true", "1", "yes"}
 EXPO_ACCESS_TOKEN = os.environ.get("EXPO_ACCESS_TOKEN", "")

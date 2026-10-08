@@ -65,3 +65,26 @@ class PrescriptionDocument(models.Model):
 
     def __str__(self):
         return self.original_name
+
+
+class PatientDocumentScan(models.Model):
+    """Private OCR draft; attaching it to a patient requires explicit review."""
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    practice = models.ForeignKey('tenancy.Practice', on_delete=models.PROTECT)
+    patient = models.ForeignKey('patients.Patient', null=True, blank=True, on_delete=models.PROTECT, related_name='scanned_documents')
+    uploaded_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name='+')
+    reviewed_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.PROTECT, related_name='+')
+    title = models.CharField(max_length=160, default='Scanned document')
+    original_key = models.CharField(max_length=500, unique=True)
+    pdf_key = models.CharField(max_length=500, unique=True)
+    original_content_type = models.CharField(max_length=100)
+    original_sha256 = models.CharField(max_length=64)
+    extracted_text = models.TextField(blank=True)
+    reviewed_text = models.TextField(blank=True)
+    suggestions = models.JSONField(default=dict)
+    document_fields = models.JSONField(default=list, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    reviewed_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ['-created_at']

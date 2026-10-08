@@ -1,7 +1,21 @@
 from django.urls import path
 from . import views
+from .document_scans import MobileDocumentScans, MobileDocumentScanReview, MobileDocumentScanDownload
+
+from .health import HealthPatients, HealthEntries, HealthEntryEdit
+
+from .registrations import Registrations, PatientRegistration, AccountRegistration
 
 urlpatterns = [
+    path("registrations/", Registrations.as_view()),
+    path("registrations/patients/<uuid:pk>/", PatientRegistration.as_view()),
+    path("registrations/accounts/<int:pk>/", AccountRegistration.as_view()),
+    path("health/patients/", HealthPatients.as_view()),
+    path("health/<uuid:patient_id>/", HealthEntries.as_view()),
+    path("health/<uuid:patient_id>/<int:pk>/", HealthEntryEdit.as_view()),
+    path("document-scans/", MobileDocumentScans.as_view()),
+    path("document-scans/<uuid:pk>/", MobileDocumentScanReview.as_view()),
+    path("document-scans/<uuid:pk>/download/<str:kind>/", MobileDocumentScanDownload.as_view()),
     path("login/", views.MobileLogin.as_view()),
     path("logout/", views.MobileLogout.as_view()),
     path("dashboard/", views.MobileDashboard.as_view()),
