@@ -5,7 +5,13 @@ from .auth import WorkspaceLoginView
 from securityguard import views as security_views
 from securityguard.forms import QueuedPasswordResetForm
 
+from . import health
+
 urlpatterns = [
+    path("health/", health.page, name="portal-health"),
+    path("health/api/patients/", health.BrowserPatients.as_view()),
+    path("health/api/<uuid:patient_id>/", health.BrowserEntries.as_view()),
+    path("health/api/<uuid:patient_id>/<int:pk>/", health.BrowserEdit.as_view()),
     path("scans/", scans.scan_page, name="portal-scans"),
     path("scans/api/", scans.BrowserDocumentScans.as_view()),
     path("scans/api/<uuid:pk>/", scans.BrowserDocumentReview.as_view()),

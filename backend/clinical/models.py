@@ -200,3 +200,16 @@ class PrescriptionItem(models.Model):
         blank=True,
         default="",
     )
+
+
+class HealthEntry(models.Model):
+    patient = models.ForeignKey("patients.Patient", on_delete=models.PROTECT, related_name="health_entries")
+    kind = models.CharField(max_length=16, choices=[("vitals", "Vitals"), ("wellness", "Wellness"), ("report", "Report")])
+    data = models.JSONField(default=dict)
+    recorded_at = models.DateTimeField()
+    recorded_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT)
+    reviewed_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.PROTECT, related_name="reviewed_health_entries")
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-recorded_at", "-pk"]

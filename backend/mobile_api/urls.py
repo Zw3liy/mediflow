@@ -2,7 +2,12 @@ from django.urls import path
 from . import views
 from .document_scans import MobileDocumentScans, MobileDocumentScanReview, MobileDocumentScanDownload
 
+from .health import HealthPatients, HealthEntries, HealthEntryEdit
+
 urlpatterns = [
+    path("health/patients/", HealthPatients.as_view()),
+    path("health/<uuid:patient_id>/", HealthEntries.as_view()),
+    path("health/<uuid:patient_id>/<int:pk>/", HealthEntryEdit.as_view()),
     path("document-scans/", MobileDocumentScans.as_view()),
     path("document-scans/<uuid:pk>/", MobileDocumentScanReview.as_view()),
     path("document-scans/<uuid:pk>/download/<str:kind>/", MobileDocumentScanDownload.as_view()),
