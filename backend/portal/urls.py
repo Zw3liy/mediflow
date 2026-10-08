@@ -7,7 +7,13 @@ from securityguard.forms import QueuedPasswordResetForm
 
 from . import health
 
+from . import registrations
+
 urlpatterns = [
+    path("registrations/", registrations.page),
+    path("registrations/api/", registrations.BrowserRegistrations.as_view()),
+    path("registrations/api/patients/<uuid:pk>/", registrations.BrowserPatient.as_view()),
+    path("registrations/api/accounts/<int:pk>/", registrations.BrowserAccount.as_view()),
     path("health/", health.page, name="portal-health"),
     path("health/api/patients/", health.BrowserPatients.as_view()),
     path("health/api/<uuid:patient_id>/", health.BrowserEntries.as_view()),

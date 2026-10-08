@@ -4,7 +4,12 @@ from .document_scans import MobileDocumentScans, MobileDocumentScanReview, Mobil
 
 from .health import HealthPatients, HealthEntries, HealthEntryEdit
 
+from .registrations import Registrations, PatientRegistration, AccountRegistration
+
 urlpatterns = [
+    path("registrations/", Registrations.as_view()),
+    path("registrations/patients/<uuid:pk>/", PatientRegistration.as_view()),
+    path("registrations/accounts/<int:pk>/", AccountRegistration.as_view()),
     path("health/patients/", HealthPatients.as_view()),
     path("health/<uuid:patient_id>/", HealthEntries.as_view()),
     path("health/<uuid:patient_id>/<int:pk>/", HealthEntryEdit.as_view()),
