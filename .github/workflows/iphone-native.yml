@@ -62,7 +62,7 @@ jobs:
           test -d build/ios/Build/Products/Release-iphoneos/MediFlow.app
           tar -czf mediflow-iphone-unsigned.tar.gz \
             -C build/ios/Build/Products/Release-iphoneos MediFlow.app
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: mediflow-iphone-unsigned-validation
           path: mobile/mediflow-iphone-unsigned.tar.gz
