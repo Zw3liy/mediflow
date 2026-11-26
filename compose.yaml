@@ -98,7 +98,7 @@ services:
     command:
       - sh
       - -c
-      - case "$DJANGO_PRODUCTION" in True|true|TRUE|1|yes|YES) python manage.py check_production || exit 1;; esac; python manage.py collectstatic --noinput && gunicorn config.wsgi:application --bind 0.0.0.0:8000 --workers 2 --timeout 60 --limit-request-line 4094 --limit-request-fields 100 --limit-request-field_size 8190
+      - case "$$DJANGO_PRODUCTION" in True|true|TRUE|1|yes|YES) python manage.py check_production || exit 1;; esac; python manage.py collectstatic --noinput && gunicorn config.wsgi:application --bind 0.0.0.0:8000 --workers 2 --timeout 60 --limit-request-line 4094 --limit-request-fields 100 --limit-request-field_size 8190
     cap_drop:
       - ALL
     security_opt:
