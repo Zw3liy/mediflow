@@ -44,11 +44,11 @@ GRANT USAGE ON SCHEMA public TO :"app_user";
 -- Transfer existing Django objects so future migrations can alter them.
 SELECT format('ALTER TABLE %I.%I OWNER TO %I',
     schemaname, tablename, :'migrator_user')
-FROM pg_tables WHERE schemaname = 'public' \\gexec
+FROM pg_tables WHERE schemaname = 'public' \gexec
 
 SELECT format('ALTER SEQUENCE %I.%I OWNER TO %I',
     sequence_schema, sequence_name, :'migrator_user')
-FROM information_schema.sequences WHERE sequence_schema = 'public' \\gexec
+FROM information_schema.sequences WHERE sequence_schema = 'public' \gexec
 
 GRANT SELECT, INSERT, UPDATE, DELETE
     ON ALL TABLES IN SCHEMA public TO :"app_user";
