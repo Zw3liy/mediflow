@@ -21,6 +21,20 @@ declare a clinical deployment ready until the runtime steps below are recorded.
    the password in an initialized database: rotate the database role and matching
    clients together in a maintenance window. Rotating the Django secret signs
    out users and invalidates existing signed download links.
+### PostgreSQL role separation
+
+The production Compose file requires three independent PostgreSQL credentials:
+
+- `POSTGRES_BOOTSTRAP_USER` / `POSTGRES_BOOTSTRAP_PASSWORD`: PostgreSQL administration only. The database container uses these to initialise PostgreSQL; the role-provisioning job uses them to create and grant the other roles. Restore verification uses this account because it creates and drops a temporary database.
+- `MEDIFLOW_MIGRATOR_USER` / `MEDIFLOW_MIGRATOR_PASSWORD`: a non-superuser schema owner used only by the one-shot `migrate` service.
+- `POSTGRES_USER` / `POSTGRES_PASSWORD`: the Django runtime account. It receives data read/write and sequence privileges, but no schema creation, role management, or database creation privileges.
+
+Generate three different strong passwords. Do not reuse the bootstrap password for the application. The `db-roles` service applies idempotent role grants before migrations; the `migrate` service applies schema changes; the `web` and normal worker services connect as the restricted runtime role. The regular backup job uses the runtime account for read-only database dumping; the explicit restore-verification job uses the bootstrap account for its isolated temporary database.
+
+The role-provisioning job runs against an existing named volume as well as a new one, so this change does not require deleting or recreating `postgres_data`. It transfers ownership of existing public-schema tables and sequences to the migrator and grants the runtime role access. Keep the bootstrap credential restricted to the server's protected `.env` and explicit recovery operations. Changing the bootstrap password in `.env` alone does not change the password stored in an already-initialised PostgreSQL volume; rotate that database role and its Compose credential together in a controlled operation. The role-provisioning job synchronises the migrator and runtime passwords from `.env` when it runs.
+
+This reduces the privileges available to a compromised Django process. It does **not** make patient data confidential from a host/root administrator: the host still controls the database, application process and deployment secrets. Confidentiality against TOS infrastructure administrators requires a separate patient-data encryption/key-custody design, or a separately controlled hosting boundary; this role split alone does not satisfy that requirement.
+
 4. Run `docker compose config --quiet`, then build the candidate web image.
    Validate it with `docker compose run --rm web python manage.py check_production`.
    Production-mode Django also checks configuration during startup, including
