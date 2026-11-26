@@ -42,25 +42,13 @@ GRANT USAGE, CREATE ON SCHEMA public TO :"migrator_user";
 GRANT USAGE ON SCHEMA public TO :"app_user";
 
 -- Transfer existing Django objects so future migrations can alter them.
-DO $$
-DECLARE item record;
-BEGIN
-    FOR item IN
-        SELECT schemaname, tablename FROM pg_tables WHERE schemaname = 'public'
-    LOOP
-        EXECUTE format('ALTER TABLE %I.%I OWNER TO %I',
-            item.schemaname, item.tablename, :'migrator_user');
-    END LOOP;
+SELECT format('ALTER TABLE %I.%I OWNER TO %I',
+    schemaname, tablename, :'migrator_user')
+FROM pg_tables WHERE schemaname = 'public' \\gexec
 
-    FOR item IN
-        SELECT sequence_schema, sequence_name
-        FROM information_schema.sequences WHERE sequence_schema = 'public'
-    LOOP
-        EXECUTE format('ALTER SEQUENCE %I.%I OWNER TO %I',
-            item.sequence_schema, item.sequence_name, :'migrator_user');
-    END LOOP;
-END
-$$;
+SELECT format('ALTER SEQUENCE %I.%I OWNER TO %I',
+    sequence_schema, sequence_name, :'migrator_user')
+FROM information_schema.sequences WHERE sequence_schema = 'public' \\gexec
 
 GRANT SELECT, INSERT, UPDATE, DELETE
     ON ALL TABLES IN SCHEMA public TO :"app_user";
