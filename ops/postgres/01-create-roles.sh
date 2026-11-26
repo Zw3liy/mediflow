@@ -9,6 +9,20 @@ set -eu
 : "${MEDIFLOW_APP_USER:?MEDIFLOW_APP_USER is required}"
 : "${MEDIFLOW_APP_PASSWORD:?MEDIFLOW_APP_PASSWORD is required}"
 
+if [ "$POSTGRES_USER" = "$MEDIFLOW_MIGRATOR_USER" ] ||
+   [ "$POSTGRES_USER" = "$MEDIFLOW_APP_USER" ] ||
+   [ "$MEDIFLOW_MIGRATOR_USER" = "$MEDIFLOW_APP_USER" ]; then
+    printf 'Bootstrap, migration and application role names must all differ.\n' >&2
+    exit 1
+fi
+
+if [ "$POSTGRES_PASSWORD" = "$MEDIFLOW_MIGRATOR_PASSWORD" ] ||
+   [ "$POSTGRES_PASSWORD" = "$MEDIFLOW_APP_PASSWORD" ] ||
+   [ "$MEDIFLOW_MIGRATOR_PASSWORD" = "$MEDIFLOW_APP_PASSWORD" ]; then
+    printf 'Bootstrap, migration and application passwords must all differ.\n' >&2
+    exit 1
+fi
+
 export PGPASSWORD="$POSTGRES_PASSWORD"
 
 psql \
