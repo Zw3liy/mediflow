@@ -1,4 +1,9 @@
 \set ON_ERROR_STOP on
+\getenv database_name POSTGRES_DB
+\getenv migrator_user MEDIFLOW_MIGRATOR_USER
+\getenv migrator_password MEDIFLOW_MIGRATOR_PASSWORD
+\getenv app_user MEDIFLOW_APP_USER
+\getenv app_password MEDIFLOW_APP_PASSWORD
 
 -- Runs with the PostgreSQL bootstrap account. Never give this account to Django.
 SELECT format(
