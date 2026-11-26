@@ -100,6 +100,18 @@ class PatientApiTests(APITestCase):
             status.HTTP_403_FORBIDDEN,
         )
 
+    def test_search_input_is_treated_as_literal_not_sql(self):
+        self.client.force_authenticate(user=self.user_a)
+
+        response = self.client.get(
+            self.url,
+            {"search": "' OR 1=1 --"},
+            HTTP_X_PRACTICE_ID=str(self.practice_a.id),
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data, [])
+
     def test_created_patient_uses_membership_practice(self):
         self.client.force_authenticate(user=self.user_a)
 
