@@ -213,6 +213,32 @@ with the practice where data may be hosted, who operates the server and the
 required recovery objectives before purchasing. The current WSL laptop/quick
 tunnel is a demo environment, not the production target.
 
+### Cloudflare Tunnel deployment (preferred for the TOS host)
+
+The existing TOS host already runs `cloudflared` as a systemd service, and the
+base Compose file binds Gunicorn only to `127.0.0.1:8000`. For this deployment,
+publish the permanent hostname in the Cloudflare Tunnel as
+`http://127.0.0.1:8000`. Do not also deploy `compose.production.yaml`: that
+Caddy overlay publishes ports 80 and 443 on the host and is intended for a
+direct-origin deployment, not this tunnel-only route.
+
+At Cloudflare, enable the zone's WAF protections and managed rules for the
+published hostname, add rate limits for login and sensitive API endpoints, and
+create a Cloudflare Access application for `/admin/*) with MFA. Keep the
+patient/staff application routes available through MediFlow's own authentication
+and MFA; do not put the entire clinical portal behind an operator-only Access
+policy. Verify that the tunnel forwards the original Host and HTTPS scheme
+correctly before enabling the production redirect/HSTS settings.
+
+Keep inbound public traffic blocked at the origin. The tunnel makes outbound
+connections from `cloudflared` to Cloudflare, so the origin does not need public
+inbound HTTP/HTTPS ports. Keep SSH restricted to the Tailscale administration
+path. This hides the origin from normal public DNS resolution and prevents
+direct-origin bypass while the firewall blocks inbound connections; it does not
+hide the origin from a party who already knows the IP or protect a compromised
+host. Cloudflare WAF filters traffic at the edge but does not replace safe ORM
+queries, tenant authorization, or database least privilege.
+
 Point the domain's DNS to the server. Permit only HTTPS/HTTP for certificate
 issuance and tightly restricted SSH; PostgreSQL and app ports remain private.
 Set `MEDIFLOW_DOMAIN`, `MEDIFLOW_PUBLIC_URL`, exact allowed hosts and CSRF origins.
