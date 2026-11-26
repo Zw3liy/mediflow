@@ -42,8 +42,9 @@ This reduces the privileges available to a compromised Django process. It does *
    deployment warnings as errors. Missing secrets, SQLite, wildcard hosts,
    HTTP-only configuration and unsafe cookie settings cause startup to fail.
 5. In the planned deployment window, run `docker compose up -d --build web`.
-   Startup applies the additive login-attempt migration and collects static files.
-   Enable `docker compose --profile automation up -d --build backup-scheduler maintenance document-scanner`.
+   Compose runs the role-provisioning job and one-shot migration service before
+   starting the web service; web startup collects static files. Enable
+   `docker compose --profile automation up -d --build backup-scheduler maintenance document-scanner`.
    Verify web health and inspect recent logs without disclosing credentials.
 6. Keep HSTS subdomain/preload options off until every affected hostname is
    verified. Increase the HSTS duration only after HTTPS and renewal are proven.
