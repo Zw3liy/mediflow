@@ -224,7 +224,7 @@ direct-origin deployment, not this tunnel-only route.
 
 At Cloudflare, enable the zone's WAF protections and managed rules for the
 published hostname, add rate limits for login and sensitive API endpoints, and
-create a Cloudflare Access application for `/admin/*) with MFA. Keep the
+create a Cloudflare Access application for `/admin/*` with MFA. Keep the
 patient/staff application routes available through MediFlow's own authentication
 and MFA; do not put the entire clinical portal behind an operator-only Access
 policy. Verify that the tunnel forwards the original Host and HTTPS scheme
@@ -239,23 +239,26 @@ hide the origin from a party who already knows the IP or protect a compromised
 host. Cloudflare WAF filters traffic at the edge but does not replace safe ORM
 queries, tenant authorization, or database least privilege.
 
-Point the domain's DNS to the server. Permit only HTTPS/HTTP for certificate
-issuance and tightly restricted SSH; PostgreSQL and app ports remain private.
-Set `MEDIFLOW_DOMAIN`, `MEDIFLOW_PUBLIC_URL`, exact allowed hosts and CSRF origins.
-Run with the additional `compose.production.yaml` file to enable Caddy's automatic
-HTTPS. Persist its certificate volumes. Caddy overwrites the forwarded scheme
-and does not enable access logging of clinical URLs. Protect `/admin/` further
-with a VPN/identity-aware access layer. Server admin access needs MFA too.
+For a direct-origin Caddy deployment instead of Cloudflare Tunnel, point
+the domain's DNS to the server, permit inbound 80/443 for Caddy and certificate
+issuance, and keep PostgreSQL and application ports private. Set
+`MEDIFLOW_DOMAIN`, `MEDIFLOW_PUBLIC_URL`, exact allowed hosts and CSRF origins.
+Run with `compose.production.yaml` to enable Caddy's automatic HTTPS and persist
+its certificate volumes. Caddy overwrites the forwarded scheme and does not
+enable access logging of clinical URLs. Protect `/admin/` with a VPN or
+identity-aware access layer. Do not combine this direct-origin overlay with the
+tunnel-only deployment above.
 
 ```bash
 docker compose -f compose.yaml -f compose.production.yaml config --quiet
 docker compose -f compose.yaml -f compose.production.yaml --profile automation up -d --build
 ```
 
-Validate actual TLS, redirects, cookie flags and sign-in/out before opening access.
-`Referrer-Policy: same-origin` is intentional: `no-referrer` can cause browsers to
-send `Origin: null` on form submissions and break CSRF verification. Never trust
-`null` origins or disable CSRF to work around this.
+Whichever ingress method is selected, validate TLS, redirects, cookie flags and
+sign-in/out before opening access. `Referrer-Policy: same-origin` is intentional:
+`no-referrer` can cause browsers to send `Origin: null` on form submissions and
+break CSRF verification. Never trust `null` origins or disable CSRF to work
+around this.
 
 ## Offsite encryption and full recovery
 
