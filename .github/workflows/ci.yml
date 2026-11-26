@@ -265,6 +265,24 @@ jobs:
           )"
           test "$vendor" = "postgresql"
 
+      - name: Verify restricted PostgreSQL runtime role
+        run: |
+          docker compose exec -T web python -c '
+          from django.db import connection
+          with connection.cursor() as cursor:
+              cursor.execute("""
+                  SELECT current_user, rolsuper, rolcreatedb,
+                         has_schema_privilege(current_user, \'public\', \'CREATE\')
+                  FROM pg_roles WHERE rolname = current_user
+              """)
+              role = cursor.fetchone()
+          assert role[0] == "mediflow_app", role
+          assert role[1] is False, role
+          assert role[2] is False, role
+          assert role[3] is False, role
+          print("PASS: Django uses a non-superuser DML-only role:", role[0])
+          '
+
       - name: Verify health endpoints
         run: |
           curl --fail --silent --show-error \
