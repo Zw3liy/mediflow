@@ -179,8 +179,12 @@ jobs:
         run: |
           cat > .env <<'ENV'
           POSTGRES_DB=mediflow
-          POSTGRES_USER=mediflow
-          POSTGRES_PASSWORD=ci-database-password
+          POSTGRES_BOOTSTRAP_USER=mediflow_bootstrap
+          POSTGRES_BOOTSTRAP_PASSWORD=ci-bootstrap-database-password
+          POSTGRES_USER=mediflow_app
+          POSTGRES_PASSWORD=ci-runtime-database-password
+          MEDIFLOW_MIGRATOR_USER=mediflow_migrator
+          MEDIFLOW_MIGRATOR_PASSWORD=ci-migration-database-password
           POSTGRES_HOST=db
           POSTGRES_PORT=5432
           POSTGRES_CONN_MAX_AGE=60
@@ -260,6 +264,24 @@ jobs:
             tail -n 1
           )"
           test "$vendor" = "postgresql"
+
+      - name: Verify restricted PostgreSQL runtime role
+        run: |
+          docker compose exec -T web python -c '
+          from django.db import connection
+          with connection.cursor() as cursor:
+              cursor.execute("""
+                  SELECT current_user, rolsuper, rolcreatedb,
+                         has_schema_privilege(current_user, %s, %s)
+                  FROM pg_roles WHERE rolname = current_user
+              """, ["public", "CREATE"])
+              role = cursor.fetchone()
+          assert role[0] == "mediflow_app", role
+          assert role[1] is False, role
+          assert role[2] is False, role
+          assert role[3] is False, role
+          print("PASS: Django uses a non-superuser DML-only role:", role[0])
+          '
 
       - name: Verify health endpoints
         run: |

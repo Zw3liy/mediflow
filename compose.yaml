@@ -4,8 +4,8 @@ services:
     restart: unless-stopped
     environment:
       POSTGRES_DB: ${POSTGRES_DB:?Set POSTGRES_DB}
-      POSTGRES_USER: ${POSTGRES_USER:?Set POSTGRES_USER}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}
+      POSTGRES_USER: ${POSTGRES_BOOTSTRAP_USER:?Set POSTGRES_BOOTSTRAP_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_BOOTSTRAP_PASSWORD:?Set POSTGRES_BOOTSTRAP_PASSWORD}
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
@@ -15,6 +15,41 @@ services:
       interval: 5s
       timeout: 3s
       retries: 20
+
+  db-roles:
+    image: postgres:16-alpine
+    restart: "no"
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:?Set POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_BOOTSTRAP_USER:?Set POSTGRES_BOOTSTRAP_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_BOOTSTRAP_PASSWORD:?Set POSTGRES_BOOTSTRAP_PASSWORD}
+      MEDIFLOW_MIGRATOR_USER: ${MEDIFLOW_MIGRATOR_USER:?Set MEDIFLOW_MIGRATOR_USER}
+      MEDIFLOW_MIGRATOR_PASSWORD: ${MEDIFLOW_MIGRATOR_PASSWORD:?Set MEDIFLOW_MIGRATOR_PASSWORD}
+      MEDIFLOW_APP_USER: ${POSTGRES_USER:?Set POSTGRES_USER}
+      MEDIFLOW_APP_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}
+    volumes:
+      - ./ops/postgres:/opt/tos-postgres:ro
+    entrypoint: ["/bin/sh", "/opt/tos-postgres/01-create-roles.sh"]
+    depends_on:
+      db:
+        condition: service_healthy
+
+  migrate:
+    build:
+      context: ./backend
+    restart: "no"
+    env_file:
+      - .env
+    environment:
+      DJANGO_PRODUCTION: ${DJANGO_PRODUCTION:-True}
+      POSTGRES_HOST: db
+      POSTGRES_PORT: "5432"
+      POSTGRES_USER: ${MEDIFLOW_MIGRATOR_USER:?Set MEDIFLOW_MIGRATOR_USER}
+      POSTGRES_PASSWORD: ${MEDIFLOW_MIGRATOR_PASSWORD:?Set MEDIFLOW_MIGRATOR_PASSWORD}
+    command: ["python", "manage.py", "migrate", "--noinput"]
+    depends_on:
+      db-roles:
+        condition: service_completed_successfully
 
   redis:
     image: redis:7-alpine
@@ -63,7 +98,7 @@ services:
     command:
       - sh
       - -c
-      - case "$$DJANGO_PRODUCTION" in True|true|TRUE|1|yes|YES) python manage.py check_production || exit 1;; esac; python manage.py migrate && python manage.py collectstatic --noinput && gunicorn config.wsgi:application --bind 0.0.0.0:8000 --workers 2 --timeout 60 --limit-request-line 4094 --limit-request-fields 100 --limit-request-field_size 8190
+      - case "$$DJANGO_PRODUCTION" in True|true|TRUE|1|yes|YES) python manage.py check_production || exit 1;; esac; python manage.py collectstatic --noinput && gunicorn config.wsgi:application --bind 0.0.0.0:8000 --workers 2 --timeout 60 --limit-request-line 4094 --limit-request-fields 100 --limit-request-field_size 8190
     cap_drop:
       - ALL
     security_opt:
@@ -78,6 +113,8 @@ services:
         condition: service_healthy
       clamav:
         condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
     healthcheck:
       test:
         - CMD-SHELL
@@ -112,6 +149,8 @@ services:
     depends_on:
       db:
         condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
 
   backup:
     image: postgres:16-alpine
@@ -165,8 +204,8 @@ services:
       - operations
     environment:
       POSTGRES_DB: ${POSTGRES_DB:?Set POSTGRES_DB}
-      POSTGRES_USER: ${POSTGRES_USER:?Set POSTGRES_USER}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}
+      POSTGRES_USER: ${POSTGRES_BOOTSTRAP_USER:?Set POSTGRES_BOOTSTRAP_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_BOOTSTRAP_PASSWORD:?Set POSTGRES_BOOTSTRAP_PASSWORD}
       BACKUP_ID: ${BACKUP_ID:-latest}
       POSTGRES_HOST: db
       POSTGRES_PORT: "5432"

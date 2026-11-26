@@ -21,6 +21,20 @@ declare a clinical deployment ready until the runtime steps below are recorded.
    the password in an initialized database: rotate the database role and matching
    clients together in a maintenance window. Rotating the Django secret signs
    out users and invalidates existing signed download links.
+### PostgreSQL role separation
+
+The production Compose file requires three independent PostgreSQL credentials:
+
+- `POSTGRES_BOOTSTRAP_USER` / `POSTGRES_BOOTSTRAP_PASSWORD`: PostgreSQL administration only. The database container uses these to initialise PostgreSQL; the role-provisioning job uses them to create and grant the other roles. Restore verification uses this account because it creates and drops a temporary database.
+- `MEDIFLOW_MIGRATOR_USER` / `MEDIFLOW_MIGRATOR_PASSWORD`: a non-superuser schema owner used only by the one-shot `migrate` service.
+- `POSTGRES_USER` / `POSTGRES_PASSWORD`: the Django runtime account. It receives data read/write and sequence privileges, but no schema creation, role management, or database creation privileges.
+
+Generate three different strong passwords. Do not reuse the bootstrap password for the application. The `db-roles` service applies idempotent role grants before migrations; the `migrate` service applies schema changes; the `web` and normal worker services connect as the restricted runtime role. The regular backup job uses the runtime account for read-only database dumping; the explicit restore-verification job uses the bootstrap account for its isolated temporary database.
+
+The role-provisioning job runs against an existing named volume as well as a new one, so this change does not require deleting or recreating `postgres_data`. It transfers ownership of existing public-schema tables and sequences to the migrator and grants the runtime role access. Keep the bootstrap credential restricted to the server's protected `.env` and explicit recovery operations. Changing the bootstrap password in `.env` alone does not change the password stored in an already-initialised PostgreSQL volume; rotate that database role and its Compose credential together in a controlled operation. The role-provisioning job synchronises the migrator and runtime passwords from `.env` when it runs.
+
+This reduces the privileges available to a compromised Django process. It does **not** make patient data confidential from a host/root administrator: the host still controls the database, application process and deployment secrets. Confidentiality against TOS infrastructure administrators requires a separate patient-data encryption/key-custody design, or a separately controlled hosting boundary; this role split alone does not satisfy that requirement.
+
 4. Run `docker compose config --quiet`, then build the candidate web image.
    Validate it with `docker compose run --rm web python manage.py check_production`.
    Production-mode Django also checks configuration during startup, including
@@ -28,8 +42,9 @@ declare a clinical deployment ready until the runtime steps below are recorded.
    deployment warnings as errors. Missing secrets, SQLite, wildcard hosts,
    HTTP-only configuration and unsafe cookie settings cause startup to fail.
 5. In the planned deployment window, run `docker compose up -d --build web`.
-   Startup applies the additive login-attempt migration and collects static files.
-   Enable `docker compose --profile automation up -d --build backup-scheduler maintenance document-scanner`.
+   Compose runs the role-provisioning job and one-shot migration service before
+   starting the web service; web startup collects static files. Enable
+   `docker compose --profile automation up -d --build backup-scheduler maintenance document-scanner`.
    Verify web health and inspect recent logs without disclosing credentials.
 6. Keep HSTS subdomain/preload options off until every affected hostname is
    verified. Increase the HSTS duration only after HTTPS and renewal are proven.
@@ -198,23 +213,52 @@ with the practice where data may be hosted, who operates the server and the
 required recovery objectives before purchasing. The current WSL laptop/quick
 tunnel is a demo environment, not the production target.
 
-Point the domain's DNS to the server. Permit only HTTPS/HTTP for certificate
-issuance and tightly restricted SSH; PostgreSQL and app ports remain private.
-Set `MEDIFLOW_DOMAIN`, `MEDIFLOW_PUBLIC_URL`, exact allowed hosts and CSRF origins.
-Run with the additional `compose.production.yaml` file to enable Caddy's automatic
-HTTPS. Persist its certificate volumes. Caddy overwrites the forwarded scheme
-and does not enable access logging of clinical URLs. Protect `/admin/` further
-with a VPN/identity-aware access layer. Server admin access needs MFA too.
+### Cloudflare Tunnel deployment (preferred for the TOS host)
+
+The existing TOS host already runs `cloudflared` as a systemd service, and the
+base Compose file binds Gunicorn only to `127.0.0.1:8000`. For this deployment,
+publish the permanent hostname in the Cloudflare Tunnel as
+`http://127.0.0.1:8000`. Do not also deploy `compose.production.yaml`: that
+Caddy overlay publishes ports 80 and 443 on the host and is intended for a
+direct-origin deployment, not this tunnel-only route.
+
+At Cloudflare, enable the zone's WAF protections and managed rules for the
+published hostname, add rate limits for login and sensitive API endpoints, and
+create a Cloudflare Access application for `/admin/*` with MFA. Keep the
+patient/staff application routes available through MediFlow's own authentication
+and MFA; do not put the entire clinical portal behind an operator-only Access
+policy. Verify that the tunnel forwards the original Host and HTTPS scheme
+correctly before enabling the production redirect/HSTS settings.
+
+Keep inbound public traffic blocked at the origin. The tunnel makes outbound
+connections from `cloudflared` to Cloudflare, so the origin does not need public
+inbound HTTP/HTTPS ports. Keep SSH restricted to the Tailscale administration
+path. This hides the origin from normal public DNS resolution and prevents
+direct-origin bypass while the firewall blocks inbound connections; it does not
+hide the origin from a party who already knows the IP or protect a compromised
+host. Cloudflare WAF filters traffic at the edge but does not replace safe ORM
+queries, tenant authorization, or database least privilege.
+
+For a direct-origin Caddy deployment instead of Cloudflare Tunnel, point
+the domain's DNS to the server, permit inbound 80/443 for Caddy and certificate
+issuance, and keep PostgreSQL and application ports private. Set
+`MEDIFLOW_DOMAIN`, `MEDIFLOW_PUBLIC_URL`, exact allowed hosts and CSRF origins.
+Run with `compose.production.yaml` to enable Caddy's automatic HTTPS and persist
+its certificate volumes. Caddy overwrites the forwarded scheme and does not
+enable access logging of clinical URLs. Protect `/admin/` with a VPN or
+identity-aware access layer. Do not combine this direct-origin overlay with the
+tunnel-only deployment above.
 
 ```bash
 docker compose -f compose.yaml -f compose.production.yaml config --quiet
 docker compose -f compose.yaml -f compose.production.yaml --profile automation up -d --build
 ```
 
-Validate actual TLS, redirects, cookie flags and sign-in/out before opening access.
-`Referrer-Policy: same-origin` is intentional: `no-referrer` can cause browsers to
-send `Origin: null` on form submissions and break CSRF verification. Never trust
-`null` origins or disable CSRF to work around this.
+Whichever ingress method is selected, validate TLS, redirects, cookie flags and
+sign-in/out before opening access. `Referrer-Policy: same-origin` is intentional:
+`no-referrer` can cause browsers to send `Origin: null` on form submissions and
+break CSRF verification. Never trust `null` origins or disable CSRF to work
+around this.
 
 ## Offsite encryption and full recovery
 
