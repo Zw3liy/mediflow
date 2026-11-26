@@ -16,10 +16,6 @@ jobs:
     name: Analyze Python and JavaScript/TypeScript
     runs-on: ubuntu-latest
     timeout-minutes: 30
-    strategy:
-      fail-fast: false
-      matrix:
-        language: [python, javascript-typescript]
     steps:
       - name: Check out repository
         uses: actions/checkout@v5
@@ -27,7 +23,7 @@ jobs:
       - name: Initialize CodeQL
         uses: github/codeql-action/init@v4
         with:
-          languages: ${{ matrix.language }}
+          languages: python,javascript
           queries: security-extended
 
       - name: Perform CodeQL analysis
