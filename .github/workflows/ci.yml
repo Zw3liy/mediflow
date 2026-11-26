@@ -272,9 +272,9 @@ jobs:
           with connection.cursor() as cursor:
               cursor.execute("""
                   SELECT current_user, rolsuper, rolcreatedb,
-                         has_schema_privilege(current_user, \'public\', \'CREATE\')
+                         has_schema_privilege(current_user, %s, %s)
                   FROM pg_roles WHERE rolname = current_user
-              """)
+              """, ["public", "CREATE"])
               role = cursor.fetchone()
           assert role[0] == "mediflow_app", role
           assert role[1] is False, role
