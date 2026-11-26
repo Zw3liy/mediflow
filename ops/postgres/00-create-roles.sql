@@ -1,7 +1,6 @@
 \set ON_ERROR_STOP on
 
--- The image bootstrap account runs this once on an empty data volume.
--- The migrator owns only this database/schema; the web account receives DML only.
+-- Runs with the PostgreSQL bootstrap account. Never give this account to Django.
 SELECT format(
     'CREATE ROLE %I LOGIN PASSWORD %L NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION',
     :'migrator_user',
@@ -41,6 +40,27 @@ GRANT CONNECT ON DATABASE :"database_name" TO :"migrator_user", :"app_user";
 REVOKE CREATE ON SCHEMA public FROM PUBLIC;
 GRANT USAGE, CREATE ON SCHEMA public TO :"migrator_user";
 GRANT USAGE ON SCHEMA public TO :"app_user";
+
+-- Transfer existing Django objects so future migrations can alter them.
+DO $$
+DECLARE item record;
+BEGIN
+    FOR item IN
+        SELECT schemaname, tablename FROM pg_tables WHERE schemaname = 'public'
+    LOOP
+        EXECUTE format('ALTER TABLE %I.%I OWNER TO %I',
+            item.schemaname, item.tablename, :'migrator_user');
+    END LOOP;
+
+    FOR item IN
+        SELECT sequence_schema, sequence_name
+        FROM information_schema.sequences WHERE sequence_schema = 'public'
+    LOOP
+        EXECUTE format('ALTER SEQUENCE %I.%I OWNER TO %I',
+            item.sequence_schema, item.sequence_name, :'migrator_user');
+    END LOOP;
+END
+$$;
 
 GRANT SELECT, INSERT, UPDATE, DELETE
     ON ALL TABLES IN SCHEMA public TO :"app_user";
