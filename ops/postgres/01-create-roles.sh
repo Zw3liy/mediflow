@@ -24,6 +24,8 @@ if [ "$POSTGRES_PASSWORD" = "$MEDIFLOW_MIGRATOR_PASSWORD" ] ||
 fi
 
 export PGPASSWORD="$POSTGRES_PASSWORD"
+export PGHOST="${POSTGRES_HOST:-db}"
+export PGPORT="${POSTGRES_PORT:-5432}"
 
 psql \
     --username "$POSTGRES_USER" \
